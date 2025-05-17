@@ -1,0 +1,17 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+node_modules
+cache
+artifacts
+logs
+frontend/node_modules
+frontend/dist
+frontend/build
+frontend/coverage
+frontend/logs
+frontend/pids
+
+dist/
+build/
+coverage/
+logs/
+pids/

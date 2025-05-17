@@ -1,0 +1,44 @@
+{
+  "name": "web3backend",
+  "version": "1.0.0",
+  "description": "Web3 backend for academic resources",
+  "type": "module",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "test:nft": "node src/test-nft-flow.js"
+  },
+  "keywords": [],
+  "author": "yuhury",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3",
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "express": "^5.1.0",
+    "fastify": "^4.24.3",
+    "form-data": "^4.0.0",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.6.1",
+    "jsonwebtoken": "^9.0.2",
+    "kubo-rpc-client": "^3.0.1",
+    "mongoose": "^8.0.3",
+    "multer": "^1.4.5-lts.1",
+    "redis": "^4.6.11",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.4",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
+  }
+}
