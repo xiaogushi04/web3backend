@@ -336,7 +336,7 @@ class NFTService {
             logger.info(`开始上架 NFT: tokenId=${tokenId}, price=${price}, signerAddress=${signerAddress}`);
             
             // 确保价格是有效的 wei 值
-            const priceInWei = ethers.parseEther(price.toString());
+            const priceInWei = ethers.parseUnits(price.toString(), "ether");
             if (priceInWei <= 0n) {
                 throw new Error('价格必须大于0');
             }
@@ -419,6 +419,90 @@ class NFTService {
             return nft.currentOwner;
         } catch (error) {
             logger.error(`获取NFT所有者失败: tokenId=${tokenId}, error=${error.message}`);
+            throw error;
+        }
+    }
+
+    // 获取用户的交易历史和收益
+    async getUserTransactionHistory(address) {
+        try {
+            const addressStr = address.toLowerCase();
+            
+            // 使用聚合查询获取用户的所有交易
+            const allTransactions = await NFT.aggregate([
+                // 展开 transfers 数组
+                { $unwind: "$transfers" },
+                
+                // 筛选出用户参与的交易
+                { $match: { 
+                    $or: [
+                        { "transfers.from": addressStr },
+                        { "transfers.to": addressStr }
+                    ]
+                }},
+                
+                // 根据交易哈希分组，避免重复计数
+                { $group: {
+                    _id: "$transfers.transactionHash",
+                    tokenId: { $first: "$tokenId" },
+                    from: { $first: "$transfers.from" },
+                    to: { $first: "$transfers.to" },
+                    timestamp: { $first: "$transfers.timestamp" },
+                    // 保存其他有用的字段
+                    title: { $first: "$title" },
+                    ipfsHash: { $first: "$ipfsHash" }
+                }},
+                
+                // 排序，最近的交易排在前面
+                { $sort: { timestamp: -1 } }
+            ]);
+            
+            logger.debug(`用户 ${addressStr} 找到 ${allTransactions.length} 条交易记录`);
+            
+            // 总交易次数就是交易记录的数量
+            const totalTransfers = allTransactions.length;
+            
+            // 现在我们需要获取交易价格信息
+            // 由于交易价格可能存储在单独的交易记录或区块链上，我们需要单独查询
+            // 此处假设我们可以从区块链事件日志中获取交易价格信息
+            
+            // 为了模拟从区块链获取信息，我们可以通过以下方法获取大致的交易价格：
+            // 1. 查询所有该用户已出售的 NFT
+            // 2. 获取最近的 NFT 上架价格作为估算价格
+            
+            // 查找用户作为卖方的所有 NFT
+            const soldNFTs = await NFT.find({
+                'transfers.from': addressStr,
+                'transfers.to': { $ne: ethers.ZeroAddress } // 非零地址表示真实交易，非铸造
+            }).lean();
+            
+            let totalEarnings = ethers.getBigInt(0);
+            
+            // 计算估算的总收益
+            for (const nft of soldNFTs) {
+                if (nft.listing && nft.listing.price) {
+                    try {
+                        const priceValue = ethers.getBigInt(nft.listing.price);
+                        totalEarnings = totalEarnings + priceValue;
+                    } catch (err) {
+                        logger.error(`解析价格错误: ${err.message}`);
+                    }
+                }
+            }
+            
+            // 将 wei 转换为 ETH 并格式化
+            const formattedEarnings = (Number(totalEarnings.toString()) / 1e18).toFixed(4);
+            
+            // 在日志中详细记录查询结果
+            logger.info(`用户 ${addressStr} 的交易统计: 总交易数=${totalTransfers}, 总收益=${formattedEarnings} ETH`);
+            
+            return {
+                totalTransfers,
+                totalEarnings: formattedEarnings,
+                transactions: allTransactions.slice(0, 10) // 只返回最近的10条交易记录
+            };
+        } catch (error) {
+            logger.error(`获取用户交易历史失败: address=${address}, error=${error.message}`);
             throw error;
         }
     }

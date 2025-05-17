@@ -404,6 +404,19 @@ export const NFTService = {
       console.error(`获取NFT ${tokenId} 上架信息失败:`, error);
       throw error;
     }
+  },
+
+  // 获取用户交易历史
+  getUserTransactionHistory: async (address: string) => {
+    try {
+      const response = await api.get<{success: boolean, data: any}>(
+        `/api/contracts/user/${address}/transactions`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`获取用户 ${address} 交易历史失败:`, error);
+      throw error;
+    }
   }
 };
 

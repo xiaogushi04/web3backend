@@ -35,14 +35,17 @@ const Profile: React.FC = () => {
   const fetchUserResources = useCallback(async () => {
     try {
       setLoading(true);
+      
       // 获取用户资源
       const data = await NFTService.getUserResources(address as string);
       setUserResources(data.resources || []);
       
+      // 获取用户交易历史和收益
+      const transactionData = await NFTService.getUserTransactionHistory(address as string);
+      console.log('交易数据:', transactionData);
+      
       // 计算用户统计数据
-      if (data.resources && data.resources.length > 0) {
-        calculateUserStats(data.resources);
-      }
+      calculateUserStats(data.resources || [], transactionData);
       
       setError(null);
     } catch (err: any) {
@@ -62,7 +65,8 @@ const Profile: React.FC = () => {
     }
   }, [address, fetchUserResources]);
 
-  const calculateUserStats = (resources: any[]) => {
+  const calculateUserStats = (resources: any[], transactionData: any) => {
+    // 默认值
     const stats = {
       uploads: resources.length,
       transfers: 0,
@@ -70,17 +74,20 @@ const Profile: React.FC = () => {
       earnings: '0.00'
     };
     
-    // 计算总交易次数和引用次数
+    // 从交易数据中获取交易次数和收益
+    if (transactionData) {
+      stats.transfers = transactionData.totalTransfers || 0;
+      stats.earnings = transactionData.totalEarnings || '0.00';
+    }
+    
+    // 计算引用次数
     resources.forEach(nft => {
-      if (nft.transfers) {
-        stats.transfers += nft.transfers.length;
-      }
       if (nft.references) {
         stats.references += nft.references.length;
       }
-      // 暂时没有收益数据，未来可以计算NFT销售收入
     });
     
+    console.log('用户统计数据:', stats);
     setUserStats(stats);
   };
 

@@ -342,4 +342,19 @@ router.get('/resource/:tokenId/download', async (req, res) => {
     }
 });
 
+// 获取用户的交易历史
+router.get('/user/:address/transactions', async (req, res) => {
+    try {
+        const { address } = req.params;
+        logger.info(`获取用户交易历史: address=${address}`);
+        
+        // 使用NFT服务获取用户交易历史
+        const transactionData = await nftService.getUserTransactionHistory(address);
+        res.json({ success: true, data: transactionData });
+    } catch (error) {
+        logger.error(`获取用户交易历史失败: address=${req.params.address}, error=${error.message}`);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 export default router; 
