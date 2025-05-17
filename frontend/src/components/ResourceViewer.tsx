@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { NFTService } from '../services/nftApi';
+import { ethers } from 'ethers';
 
 interface ResourceViewerProps {
   resourceId: string;
@@ -271,7 +272,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
                   </svg>
                   购买中...
                 </span>
-              ) : `购买资源 (${resource.price} ETH)`}
+              ) : `购买资源 (${ethers.utils.formatEther(resource.price)} ETH)`}
             </button>
           ) : (
             <button
