@@ -297,18 +297,18 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
         require(currentAccessTokens < maxAccessTokens, "Maximum access tokens reached");
         require(msg.value >= price, "Insufficient payment");
 
-        // 调用访问权合约铸造访问权
-        uint256 accessTokenId = IAccessToken(accessTokenContract).mintAccessToken{value: price}(
+        // 计算费用分配
+        uint256 platformFee = (price * platformFeePercentage) / 100;
+        uint256 royaltyFee = (price * getRoyaltyPercentage(resourceId)) / 100;
+        uint256 ownerAmount = price - platformFee - royaltyFee;
+
+        // 调用访问权合约铸造访问权（不发送 ETH）
+        uint256 accessTokenId = IAccessToken(accessTokenContract).mintAccessToken(
             resourceId,
             IAccessToken.AccessType.Read,
             duration,
             maxUses
         );
-
-        // 计算费用分配
-        uint256 platformFee = (price * platformFeePercentage) / 100;
-        uint256 royaltyFee = (price * getRoyaltyPercentage(resourceId)) / 100;
-        uint256 ownerAmount = price - platformFee - royaltyFee;
 
         // 转移费用
         if (platformFee > 0) {
@@ -328,7 +328,7 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
             require(ownerSuccess, "Owner payment transfer failed");
         }
 
-        // 退还多余的ETH
+        // 退还多余的 ETH
         uint256 excess = msg.value - price;
         if (excess > 0) {
             (bool refundSuccess, ) = payable(msg.sender).call{value: excess}("");

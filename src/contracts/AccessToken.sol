@@ -125,7 +125,7 @@ contract AccessToken is ERC721Enumerable, Ownable {
         AccessType accessType,
         uint256 duration,
         uint256 maxUses
-    ) external payable returns (uint256) {
+    ) external returns (uint256) {
         // 检查调用者是否为Market合约
         require(msg.sender == owner(), "Only market contract can mint");
 
@@ -133,7 +133,6 @@ contract AccessToken is ERC721Enumerable, Ownable {
         ResourceAccessConfig storage config = _resourceConfigs[resourceId];
         require(config.isActive, "Resource access not active");
         require(config.currentAccessTokens < config.maxAccessTokens, "Max access tokens reached");
-        require(msg.value >= config.price, "Insufficient payment");
         require(maxUses > 0, "Max uses must be greater than 0");
         require(duration > 0, "Duration must be greater than 0");
 
@@ -160,12 +159,6 @@ contract AccessToken is ERC721Enumerable, Ownable {
 
         config.currentAccessTokens++;
         _userAccessTokens[tx.origin].push(newTokenId);
-
-        // 退回多余的ETH
-        if (msg.value > config.price) {
-            (bool refundSuccess, ) = payable(tx.origin).call{value: msg.value - config.price}("");
-            require(refundSuccess, "Refund failed");
-        }
 
         emit AccessTokenMinted(
             newTokenId,
