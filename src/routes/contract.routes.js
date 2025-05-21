@@ -36,8 +36,8 @@ router.post('/mint-with-file',
             });
         }
 
-        const { to, title, description, resourceType, authors } = req.body;
-        logger.debug('请求参数:', { to, title, description, resourceType, authors });
+        const { to, title, description, resourceType, authors, royaltyPercentage } = req.body;
+        logger.debug('请求参数:', { to, title, description, resourceType, authors, royaltyPercentage });
 
         if (!to || !title || !description || !resourceType || !authors) {
             logger.error('缺少必要参数');
@@ -74,7 +74,8 @@ router.post('/mint-with-file',
                 description,
                 cid,  // 使用 cid 作为 ipfsHash
                 parseInt(resourceType),
-                JSON.parse(authors)
+                JSON.parse(authors),
+                parseInt(royaltyPercentage || '5') // 添加版税参数
             );
             logger.info('NFT 铸造成功:', result);
 
@@ -230,6 +231,19 @@ router.get('/listing/:tokenId', async (req, res) => {
         res.json({ success: true, data: listing });
     } catch (error) {
         logger.error(`获取上架详情失败: tokenId=${req.params.tokenId}, error=${error.message}`);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 获取购买费用明细
+router.get('/purchase-breakdown/:tokenId', async (req, res) => {
+    try {
+        const { tokenId } = req.params;
+        // 使用合约服务获取购买费用明细
+        const breakdown = await contractService.getPurchaseBreakdown(tokenId);
+        res.json({ success: true, data: breakdown });
+    } catch (error) {
+        logger.error(`获取购买费用明细失败: tokenId=${req.params.tokenId}, error=${error.message}`);
         res.status(500).json({ success: false, error: error.message });
     }
 });

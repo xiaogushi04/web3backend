@@ -34,6 +34,7 @@ interface NFTMetadata {
     seller: string | null;
     listedAt: string | null;
   };
+  royaltyPercentage?: number;
 }
 
 interface NFTListResponse {
@@ -131,6 +132,9 @@ export const NFTService = {
           'Content-Type': 'multipart/form-data',
         },
       };
+      
+      // 添加版税参数
+      formData.append('royaltyPercentage', formData.get('royaltyPercentage') || '5');
       
       const response = await api.post<{success: boolean, data: any}>(
         '/api/contracts/mint-with-file',
@@ -416,6 +420,28 @@ export const NFTService = {
     } catch (error) {
       console.error(`获取用户 ${address} 交易历史失败:`, error);
       throw error;
+    }
+  },
+  
+  // 获取购买费用明细
+  getPurchaseBreakdown: async (tokenId: string) => {
+    try {
+      const response = await api.get<{success: boolean, data: any}>(
+        `/api/contracts/purchase-breakdown/${tokenId}`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`获取购买费用明细失败: tokenId=${tokenId}, error=${error}`)
+      // 返回默认值，避免界面崩溃
+      return {
+        totalPrice: "0",
+        platformFee: "0",
+        royaltyFee: "0",
+        sellerReceives: "0",
+        creator: ethers.constants.AddressZero,
+        platformFeePercentage: 2,
+        royaltyPercentage: 5
+      };
     }
   }
 };

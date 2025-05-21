@@ -44,9 +44,213 @@ export class ContractService {
             contracts.market.abi,
             this.wallet
         );
+
+        // 添加合约地址日志
+        logger.info('合约初始化完成:');
+        logger.info(`NFT合约地址: ${contracts.academicNFT.address}`);
+        logger.info(`Market合约地址: ${contracts.market.address}`);
+        logger.info(`Provider URL: ${config.blockchain.rpcUrl}`);
+        logger.info(`Wallet地址: ${this.wallet.address}`);
+
+        // 添加事件处理跟踪
+        this.processedEvents = new Set();
+        
+        // 设置事件监听
+        this._setupEventListeners();
     }
 
-    async mintResource(to, title, description, ipfsHash, resourceType, authors) {
+    // 设置事件监听
+    _setupEventListeners() {
+        logger.info('开始设置事件监听...');
+
+        // 移除所有现有的事件监听器
+        this.marketContract.removeAllListeners('TokenSold');
+        this.marketContract.removeAllListeners('TokenListed');
+        this.marketContract.removeAllListeners('RoyaltyPaid');
+
+        // 监听 TokenListed 事件
+        this.marketContract.on('TokenListed', async (tokenId, seller, price, event) => {
+            try {
+                // 等待交易确认
+                if (!event.transactionHash) {
+                    logger.info('等待交易确认...');
+                    return;
+                }
+
+                // 生成事件唯一ID
+                const eventId = `${event.transactionHash}-${event.logIndex}`;
+                
+                // 检查是否已处理过该事件
+                if (this.processedEvents.has(eventId)) {
+                    logger.info(`TokenListed事件已处理过: ${eventId}`);
+                    return;
+                }
+                
+                // 记录事件ID
+                this.processedEvents.add(eventId);
+                
+                // 等待交易确认
+                const receipt = await this.provider.waitForTransaction(event.transactionHash);
+                if (!receipt || receipt.status !== 1) {
+                    logger.error(`交易失败: ${event.transactionHash}`);
+                    return;
+                }
+
+                logger.info('检测到 TokenListed 事件:');
+                logger.info(`TokenId: ${tokenId.toString()}`);
+                logger.info(`Seller: ${seller}`);
+                logger.info(`Price: ${ethers.formatEther(price)} ETH`);
+                logger.info(`Transaction Hash: ${event.transactionHash}`);
+                logger.info(`Block Number: ${receipt.blockNumber}`);
+                logger.info(`Event ID: ${eventId}`);
+                logger.info(`Gas使用: ${receipt.gasUsed.toString()}`);
+
+                // 更新数据库中的NFT状态
+                try {
+                    const nft = await NFT.findOne({ tokenId: tokenId.toString() });
+                    if (nft) {
+                        // 检查NFT当前状态
+                        const currentListing = await this.marketContract.listings(tokenId);
+                        if (!currentListing.isActive) {
+                            logger.warn(`NFT ${tokenId} 当前未上架，跳过更新`);
+                            return;
+                        }
+
+                        nft.listing = {
+                            active: true,
+                            price: price.toString(),
+                            seller: seller.toLowerCase(),
+                            timestamp: Date.now(),
+                            transactionHash: event.transactionHash,
+                            blockNumber: receipt.blockNumber
+                        };
+                        await nft.save();
+                        logger.info(`NFT ${tokenId} 上架状态已更新`);
+                    } else {
+                        logger.warn(`未找到NFT ${tokenId} 的记录`);
+                    }
+                } catch (dbError) {
+                    logger.error(`更新NFT上架状态失败: ${dbError.message}`);
+                }
+            } catch (error) {
+                logger.error(`处理TokenListed事件时出错: ${error.message}`);
+            }
+        });
+
+        // 监听 TokenSold 事件
+        this.marketContract.on('TokenSold', async (tokenId, seller, buyer, price, event) => {
+            try {
+                // 等待交易确认
+                if (!event.transactionHash) {
+                    logger.info('等待交易确认...');
+                    return;
+                }
+
+                // 生成事件唯一ID
+                const eventId = `${event.transactionHash}-${event.logIndex}`;
+                
+                // 检查是否已处理过该事件
+                if (this.processedEvents.has(eventId)) {
+                    logger.info(`TokenSold事件已处理过: ${eventId}`);
+                    return;
+                }
+                
+                // 记录事件ID
+                this.processedEvents.add(eventId);
+                
+                // 等待交易确认
+                const receipt = await this.provider.waitForTransaction(event.transactionHash);
+                if (!receipt || receipt.status !== 1) {
+                    logger.error(`交易失败: ${event.transactionHash}`);
+                    return;
+                }
+
+                logger.info('检测到 TokenSold 事件:');
+                logger.info(`TokenId: ${tokenId.toString()}`);
+                logger.info(`Seller: ${seller}`);
+                logger.info(`Buyer: ${buyer}`);
+                logger.info(`Price: ${ethers.formatEther(price)} ETH`);
+                logger.info(`Transaction Hash: ${event.transactionHash}`);
+                logger.info(`Block Number: ${receipt.blockNumber}`);
+                logger.info(`Event ID: ${eventId}`);
+                logger.info(`Gas使用: ${receipt.gasUsed.toString()}`);
+
+                // 更新数据库中的NFT状态
+                try {
+                    const nft = await NFT.findOne({ tokenId: tokenId.toString() });
+                    if (nft) {
+                        nft.listing = {
+                            active: false,
+                            price: '0',
+                            seller: null,
+                            timestamp: Date.now()
+                        };
+                        nft.currentOwner = buyer.toLowerCase();
+                        nft.transfers.push({
+                            from: seller.toLowerCase(),
+                            to: buyer.toLowerCase(),
+                            timestamp: Date.now(),
+                            blockNumber: receipt.blockNumber,
+                            transactionHash: event.transactionHash
+                        });
+                        await nft.save();
+                        logger.info(`NFT ${tokenId} 销售状态已更新`);
+                    } else {
+                        logger.warn(`未找到NFT ${tokenId} 的记录`);
+                    }
+                } catch (dbError) {
+                    logger.error(`更新NFT销售状态失败: ${dbError.message}`);
+                }
+            } catch (error) {
+                logger.error(`处理TokenSold事件时出错: ${error.message}`);
+            }
+        });
+
+        // 监听 RoyaltyPaid 事件
+        this.marketContract.on('RoyaltyPaid', async (tokenId, creator, amount, event) => {
+            try {
+                // 等待交易确认
+                if (!event.transactionHash) {
+                    logger.info('等待交易确认...');
+                    return;
+                }
+
+                // 生成事件唯一ID
+                const eventId = `${event.transactionHash}-${event.logIndex}`;
+                
+                // 检查是否已处理过该事件
+                if (this.processedEvents.has(eventId)) {
+                    logger.info(`RoyaltyPaid事件已处理过: ${eventId}`);
+                    return;
+                }
+                
+                // 记录事件ID
+                this.processedEvents.add(eventId);
+                
+                // 等待交易确认
+                const receipt = await this.provider.waitForTransaction(event.transactionHash);
+                if (!receipt || receipt.status !== 1) {
+                    logger.error(`交易失败: ${event.transactionHash}`);
+                    return;
+                }
+
+                logger.info('检测到 RoyaltyPaid 事件:');
+                logger.info(`TokenId: ${tokenId.toString()}`);
+                logger.info(`Creator: ${creator}`);
+                logger.info(`Amount: ${ethers.formatEther(amount)} ETH`);
+                logger.info(`Transaction Hash: ${event.transactionHash}`);
+                logger.info(`Block Number: ${receipt.blockNumber}`);
+                logger.info(`Event ID: ${eventId}`);
+                logger.info(`Gas使用: ${receipt.gasUsed.toString()}`);
+            } catch (error) {
+                logger.error(`处理RoyaltyPaid事件时出错: ${error.message}`);
+            }
+        });
+
+        logger.info('事件监听设置完成');
+    }
+
+    async mintResource(to, title, description, ipfsHash, resourceType, authors, royaltyPercentage = 5) {
         try {
             logger.info('开始铸造NFT:', {
                 to,
@@ -54,7 +258,8 @@ export class ContractService {
                 description,
                 ipfsHash,
                 resourceType,
-                authors
+                authors,
+                royaltyPercentage
             });
 
             // 获取当前区块信息
@@ -138,6 +343,25 @@ export class ContractService {
                 authors
             });
 
+            // 设置版税
+            try {
+                const marketContract = new ethers.Contract(
+                    contracts.market.address,
+                    contracts.market.abi,
+                    this.wallet
+                );
+                
+                const setRoyaltyTx = await marketContract.setCustomRoyaltyPercentage(
+                    tokenId,
+                    royaltyPercentage
+                );
+                await setRoyaltyTx.wait();
+                logger.info(`设置版税成功: ${royaltyPercentage}%`);
+            } catch (royaltyError) {
+                logger.error('设置版税失败:', royaltyError);
+                // 不抛出错误，因为NFT已经成功铸造
+            }
+
             // 创建NFT记录
             const nft = new NFT({
                 tokenId: tokenId,
@@ -162,7 +386,8 @@ export class ContractService {
                     price: '0',
                     seller: null,
                     timestamp: 0
-                }
+                },
+                royaltyPercentage: royaltyPercentage // 添加版税信息
             });
 
             await nft.save();
@@ -194,7 +419,8 @@ export class ContractService {
                 success: true,
                 tokenId: tokenId,
                 transactionHash: receipt.hash,
-                block: receipt.blockNumber
+                block: receipt.blockNumber,
+                royaltyPercentage: royaltyPercentage
             };
         } catch (error) {
             logger.error('铸造NFT失败:', error);
@@ -280,32 +506,28 @@ export class ContractService {
 
     async listToken(tokenId, price, signature) {
         try {
-            logger.info(`开始上架NFT, tokenId: ${tokenId}, price: ${price}`);
-            logger.info(`Market合约地址: ${contracts.market.address}`);
-            logger.info(`NFT合约地址: ${contracts.academicNFT.address}`);
-            
-            // 检查参数
-            if (!tokenId || tokenId <= 0) {
-                throw new Error('无效的tokenId');
-            }
-            
-            if (!price || price <= 0) {
-                throw new Error('无效的价格');
-            }
+            logger.info('开始上架NFT...');
+            logger.info(`TokenId: ${tokenId}`);
+            logger.info(`Price: ${price} ETH`);
+            logger.info(`Signature: ${signature}`);
 
             // 验证签名
-            const message = `授权访问资源 ${tokenId}`;
+            const message = `List token ${tokenId} for ${price} ETH`;
             const recoveredAddress = ethers.verifyMessage(message, signature);
-            logger.info(`签名恢复地址: ${recoveredAddress}`);
+            logger.info(`签名验证成功，恢复的地址: ${recoveredAddress}`);
 
             // 检查NFT所有权
             try {
+                logger.info('检查NFT所有权...');
                 const owner = await this.academicNFTContract.ownerOf(tokenId);
-                logger.info(`NFT所有者: ${owner}`);
+                logger.info(`NFT当前所有者: ${owner}`);
                 
-                // 使用签名恢复的地址检查所有权
                 if (owner.toLowerCase() !== recoveredAddress.toLowerCase()) {
-                    throw new Error('您不是该NFT的所有者，无法上架');
+                    logger.error(`NFT所有权验证失败: 当前所有者=${owner}, 签名地址=${recoveredAddress}`);
+                    return {
+                        success: false,
+                        message: '您不是该NFT的所有者'
+                    };
                 }
             } catch (error) {
                 logger.error(`检查NFT所有权失败: ${error.message}`);
@@ -325,7 +547,7 @@ export class ContractService {
                 logger.info(`Market合约授权状态: ${isApproved}`);
                 
                 if (!isApproved) {
-                    logger.info('Market合约未授权');
+                    logger.info('Market合约未授权，需要用户授权');
                     return {
                         success: false,
                         message: 'Market合约未授权',
@@ -340,8 +562,30 @@ export class ContractService {
                 logger.error(`检查Market合约授权失败: ${error.message}`);
                 throw new Error(`检查Market合约授权失败: ${error.message}`);
             }
+
+            // 检查NFT是否已经上架
+            try {
+                logger.info('检查NFT上架状态...');
+                const listing = await this.marketContract.listings(tokenId);
+                logger.info(`NFT当前上架状态:`, {
+                    seller: listing.seller,
+                    price: ethers.formatEther(listing.price),
+                    isActive: listing.isActive
+                });
+
+                if (listing.isActive) {
+                    logger.info('NFT已经上架');
+                    return {
+                        success: false,
+                        message: 'NFT已经上架'
+                    };
+                }
+            } catch (error) {
+                logger.error(`检查NFT上架状态失败: ${error.message}`);
+                throw new Error(`检查NFT上架状态失败: ${error.message}`);
+            }
             
-            // 返回合约地址和参数，让前端直接调用合约
+            logger.info('上架NFT成功，返回合约信息');
             return {
                 success: true,
                 data: {
@@ -374,36 +618,56 @@ export class ContractService {
         }
     }
 
-    async buyToken(tokenId, value, buyerAddress) {
+    async buyToken(tokenId, price, signature) {
         try {
-            logger.info(`购买NFT, tokenId: ${tokenId}, buyer: ${buyerAddress}, price: ${value} wei`);
-            
-            // 创建合约实例（使用平台钱包，因为需要支付ETH）
-            const marketContract = new ethers.Contract(
-                contracts.market.address,
-                contracts.market.abi,
-                this.wallet
-            );
-            
-            // 发送交易
-            const tx = await marketContract.buyToken(tokenId, { value });
-            const receipt = await tx.wait();
-            
-            // 手动触发索引器同步
+            logger.info('开始购买NFT...');
+            logger.info(`TokenId: ${tokenId}`);
+            logger.info(`Price: ${price} ETH`);
+            logger.info(`Signature: ${signature}`);
+
+            // 验证签名
+            const message = `Buy token ${tokenId} for ${price} ETH`;
+            const recoveredAddress = ethers.verifyMessage(message, signature);
+            logger.info(`签名验证成功，恢复的地址: ${recoveredAddress}`);
+
+            // 检查NFT是否已上架
             try {
-                logger.info('开始手动同步索引器...');
-                const currentBlock = await this.provider.getBlockNumber();
-                const fromBlock = currentBlock - 1; // 只同步当前区块
-                await indexerService.syncSpecificBlockRange(fromBlock, currentBlock);
-                logger.info('索引器同步完成');
-            } catch (syncError) {
-                logger.error('索引器同步失败:', syncError);
-                // 不抛出错误，因为购买已经成功
+                logger.info('检查NFT上架状态...');
+                const listing = await this.marketContract.listings(tokenId);
+                logger.info(`NFT上架信息:`, {
+                    seller: listing.seller,
+                    price: ethers.formatEther(listing.price),
+                    isActive: listing.isActive
+                });
+
+                if (!listing.isActive) {
+                    logger.info('NFT未上架或已售出');
+                    return {
+                        success: false,
+                        message: 'NFT未上架或已售出'
+                    };
+                }
+
+                if (listing.price.toString() !== price) {
+                    logger.info(`价格不匹配: 上架价格=${ethers.formatEther(listing.price)} ETH, 出价=${price} ETH`);
+                    return {
+                        success: false,
+                        message: '价格不匹配'
+                    };
+                }
+            } catch (error) {
+                logger.error(`检查NFT上架状态失败: ${error.message}`);
+                throw new Error(`检查NFT上架状态失败: ${error.message}`);
             }
-            
+
+            logger.info('购买NFT成功，返回合约信息');
             return {
                 success: true,
-                transactionHash: receipt.hash
+                data: {
+                    marketAddress: contracts.market.address,
+                    tokenId: tokenId,
+                    price: price.toString()
+                }
             };
         } catch (error) {
             logger.error('购买 NFT 失败:', error);
@@ -456,6 +720,35 @@ export class ContractService {
         }
         catch (error) {
             logger.error('获取市场信息失败:', error);
+            throw error;
+        }
+    }
+
+    // 获取购买费用明细
+    async getPurchaseBreakdown(tokenId) {
+        try {
+            // 确保Market合约已初始化
+            if (!this.marketContract) {
+                throw new Error('Market合约未初始化');
+            }
+
+            // 调用合约的getPurchaseBreakdown方法
+            const [totalPrice, platformFee, royaltyFee, sellerReceives, creator] = 
+                await this.marketContract.getPurchaseBreakdown(tokenId);
+            
+            // 将大数字转换为字符串
+            return {
+                totalPrice: totalPrice.toString(),
+                platformFee: platformFee.toString(),
+                royaltyFee: royaltyFee.toString(),
+                sellerReceives: sellerReceives.toString(),
+                creator,
+                // 添加百分比信息方便前端显示
+                platformFeePercentage: await this.marketContract.platformFeePercentage(),
+                royaltyPercentage: await this.marketContract.getRoyaltyPercentage(tokenId)
+            };
+        } catch (error) {
+            logger.error(`获取购买费用明细失败: tokenId=${tokenId}, error=${error.message}`);
             throw error;
         }
     }

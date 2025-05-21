@@ -31,20 +31,20 @@ export const blockchainConfig = {
   contracts: {
     academicNFT: {
       // address: '0xFD67221D00b9b87505D679C125d1433991d982C4',
-      address: '0xC4B9E4eDFe5A2F6b09F70573C2514997B2350bAD',
+      address: '0x8311284A7B127e3E406D1aEe9faa4361CB6ea99B',
       // chainId: sepolia.id
       chainId: localhost.id,
       abi: ACADEMIC_NFT_ABI
     },
     reference: {
       // address: '0x234E1f27907e64A1DcE38F3649d88BA0f777DE23',
-      address: '0x4E9bf387C7593fD6166fE549E1f994087591D3b5',
+      address: '0xCa6b91bA27c4be2B97B090ce9CC35610ec0bfE17',
       // chainId: sepolia.id
       chainId: localhost.id
     },
     market: {
       // address: '0xAb36758DFFe216E4fb2D56e5c175F677d1D4c30c',
-      address: '0x52a361bdD66E170725AC06f4B745116De2E87F19',
+      address: '0x03669128f1C5579c629EDCaDA165878409a2E007',
       // chainId: sepolia.id
       chainId: localhost.id,
       abi: MARKET_ABI

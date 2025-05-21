@@ -450,7 +450,9 @@ class NFTService {
                     timestamp: { $first: "$transfers.timestamp" },
                     // 保存其他有用的字段
                     title: { $first: "$title" },
-                    ipfsHash: { $first: "$ipfsHash" }
+                    ipfsHash: { $first: "$ipfsHash" },
+                    creator: { $first: "$creator" },
+                    royaltyPercentage: { $first: "$royaltyPercentage" }
                 }},
                 
                 // 排序，最近的交易排在前面
@@ -462,43 +464,66 @@ class NFTService {
             // 总交易次数就是交易记录的数量
             const totalTransfers = allTransactions.length;
             
-            // 现在我们需要获取交易价格信息
-            // 由于交易价格可能存储在单独的交易记录或区块链上，我们需要单独查询
-            // 此处假设我们可以从区块链事件日志中获取交易价格信息
-            
-            // 为了模拟从区块链获取信息，我们可以通过以下方法获取大致的交易价格：
-            // 1. 查询所有该用户已出售的 NFT
-            // 2. 获取最近的 NFT 上架价格作为估算价格
-            
             // 查找用户作为卖方的所有 NFT
             const soldNFTs = await NFT.find({
                 'transfers.from': addressStr,
                 'transfers.to': { $ne: ethers.ZeroAddress } // 非零地址表示真实交易，非铸造
             }).lean();
             
-            let totalEarnings = ethers.getBigInt(0);
+            // 查找用户作为创建者的所有 NFT
+            const createdNFTs = await NFT.find({
+                creator: addressStr
+            }).lean();
             
-            // 计算估算的总收益
+            let sellerEarnings = ethers.getBigInt(0); // 作为卖家的收益
+            let creatorEarnings = ethers.getBigInt(0); // 作为创建者的版税收益
+            
+            // 计算作为卖家的收益
             for (const nft of soldNFTs) {
                 if (nft.listing && nft.listing.price) {
                     try {
                         const priceValue = ethers.getBigInt(nft.listing.price);
-                        totalEarnings = totalEarnings + priceValue;
+                        // 计算卖家收入（总价减去平台费和版税）
+                        const platformFee = (priceValue * ethers.getBigInt(2)) / ethers.getBigInt(100); // 2%平台费
+                        const royaltyFee = (priceValue * ethers.getBigInt(nft.royaltyPercentage || 5)) / ethers.getBigInt(100); // 版税
+                        const sellerReceives = priceValue - platformFee - royaltyFee;
+                        sellerEarnings += sellerReceives;
                     } catch (err) {
-                        logger.error(`解析价格错误: ${err.message}`);
+                        logger.error(`解析卖家收益错误: ${err.message}`);
+                    }
+                }
+            }
+            
+            // 计算作为创建者的版税收益
+            for (const nft of createdNFTs) {
+                if (nft.listing && nft.listing.price) {
+                    try {
+                        const priceValue = ethers.getBigInt(nft.listing.price);
+                        const royaltyFee = (priceValue * ethers.getBigInt(nft.royaltyPercentage || 5)) / ethers.getBigInt(100);
+                        // 只有当创建者不是卖家时才计入版税收益
+                        if (nft.creator && nft.creator.toLowerCase() === addressStr && 
+                            nft.currentOwner && nft.currentOwner.toLowerCase() !== addressStr) {
+                            creatorEarnings += royaltyFee;
+                        }
+                    } catch (err) {
+                        logger.error(`解析版税收益错误: ${err.message}`);
                     }
                 }
             }
             
             // 将 wei 转换为 ETH 并格式化
-            const formattedEarnings = (Number(totalEarnings.toString()) / 1e18).toFixed(4);
+            const formattedSellerEarnings = (Number(sellerEarnings.toString()) / 1e18).toFixed(4);
+            const formattedCreatorEarnings = (Number(creatorEarnings.toString()) / 1e18).toFixed(4);
+            const totalEarnings = Number(formattedSellerEarnings) + Number(formattedCreatorEarnings);
             
             // 在日志中详细记录查询结果
-            logger.info(`用户 ${addressStr} 的交易统计: 总交易数=${totalTransfers}, 总收益=${formattedEarnings} ETH`);
+            logger.info(`用户 ${addressStr} 的交易统计: 总交易数=${totalTransfers}, 卖家收益=${formattedSellerEarnings} ETH, 版税收益=${formattedCreatorEarnings} ETH, 总收益=${totalEarnings} ETH`);
             
             return {
                 totalTransfers,
-                totalEarnings: formattedEarnings,
+                totalEarnings: totalEarnings.toFixed(4),
+                sellerEarnings: formattedSellerEarnings,
+                creatorEarnings: formattedCreatorEarnings,
                 transactions: allTransactions.slice(0, 10) // 只返回最近的10条交易记录
             };
         } catch (error) {

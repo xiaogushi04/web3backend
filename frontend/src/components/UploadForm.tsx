@@ -15,6 +15,7 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
     resourceType: '0', // 0: Paper, 1: Dataset, 2: Code, 3: Other
     authors: [''], // 作者地址数组
     price: '0.01', // 添加默认价格
+    royaltyPercentage: '5', // 添加默认版税比例
   });
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -75,6 +76,7 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
       formData.append('resourceType', metadata.resourceType);
       formData.append('authors', JSON.stringify([address])); // 默认将上传者设为作者
       formData.append('price', metadata.price); // 添加价格
+      formData.append('royaltyPercentage', metadata.royaltyPercentage); // 添加版税参数
 
       // 调用后端 API
       const response = await axios.post('/api/contracts/mint-with-file', formData, {
@@ -92,7 +94,8 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
           description: '',
           resourceType: '0',
           authors: [''],
-          price: '0.01' // 重置价格
+          price: '0.01', // 重置价格
+          royaltyPercentage: '5' // 重置版税比例
         });
       } else {
         throw new Error(response.data.error || '铸造失败');
@@ -243,6 +246,26 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
               required
             />
             <p className="mt-1 text-xs text-gray-500">设置为0表示免费资源</p>
+          </div>
+
+          <div>
+            <label htmlFor="royaltyPercentage" className="block text-sm font-medium text-gray-700">
+              版税比例 (%)
+            </label>
+            <input
+              type="number"
+              name="royaltyPercentage"
+              id="royaltyPercentage"
+              min="0"
+              max="15"
+              step="0.1"
+              value={metadata.royaltyPercentage}
+              onChange={handleMetadataChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-gray-900 focus:border-gray-900 sm:text-sm text-gray-900"
+              placeholder="请输入版税比例"
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500">版税比例范围：0-15%，每次交易时创作者将获得此比例的收益</p>
           </div>
         </div>
 

@@ -128,6 +128,18 @@ const NFTSchema = new mongoose.Schema({
             default: null
         }
     },
+    royaltyPercentage: {
+        type: Number,
+        default: 5,
+        min: 0,
+        max: 15,
+        validate: {
+            validator: function(v) {
+                return v >= 0 && v <= 15;
+            },
+            message: '版税比例必须在0-15%之间'
+        }
+    },
     references: [{
         referenceId: {
             type: String,

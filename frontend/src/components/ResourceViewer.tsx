@@ -18,6 +18,9 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPurchased, setIsPurchased] = useState(false);
+  const [purchaseBreakdown, setPurchaseBreakdown] = useState<any>(null);
+  const [showBreakdown, setShowBreakdown] = useState(true);
+  const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
 
   useEffect(() => {
     if (actualResourceId) {
@@ -27,6 +30,13 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       setIsLoading(false);
     }
   }, [actualResourceId, address]);
+  
+  // 当资源信息加载完成后，获取购买费用明细
+  useEffect(() => {
+    if (resource && resource.id && !isPurchased) {
+      fetchPurchaseBreakdown();
+    }
+  }, [resource, isPurchased]);
 
   const fetchResourceDetails = async () => {
     try {
@@ -64,7 +74,10 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
           price: metadata.listing?.price || '0',
           downloads: 0, // 目前API没有这些数据，设置默认值
           citations: metadata.references?.length || 0,
-          owner: metadata.currentOwner || metadata.creator || '未知'
+          owner: metadata.currentOwner || metadata.creator || '未知',
+          creator: metadata.creator || '未知',
+          royaltyPercentage: metadata.royaltyPercentage || 0,
+          listing: metadata.listing || { isActive: false }
         });
         setError(null);
         return;
@@ -87,7 +100,10 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         price: '0.1',
         downloads: 123,
         citations: 45,
-        owner: '0x1234...5678'
+        owner: '0x1234...5678',
+        creator: '作者1, 作者2',
+        royaltyPercentage: 10,
+        listing: { isActive: true }
       };
       setResource(mockResource);
       setError(null);
@@ -95,6 +111,17 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       setError('获取资源详情失败');
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // 获取购买费用明细
+  const fetchPurchaseBreakdown = async () => {
+    try {
+      const breakdown = await NFTService.getPurchaseBreakdown(actualResourceId);
+      setPurchaseBreakdown(breakdown);
+    } catch (error) {
+      console.error('获取购买费用明细失败:', error);
+      // 不设置错误状态，因为这不是关键功能
     }
   };
 
@@ -248,6 +275,60 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
             ))}
           </div>
         </div>
+        
+        {/* 价格和版税信息 */}
+        {!isPurchased && (
+          <div className="border-t border-gray-200 pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold text-gray-900">价格详情</h2>
+              <button 
+                onClick={() => setShowBreakdown(!showBreakdown)}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                {showBreakdown ? '隐藏详情' : '查看详情'}
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-lg font-medium">总价:</span>
+              <span className="text-xl font-semibold">{ethers.utils.formatEther(resource.price)} ETH</span>
+            </div>
+            
+            {showBreakdown && purchaseBreakdown && (
+              <div className="bg-gray-50 p-4 rounded-md mt-2">
+                <div className="text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span>平台服务费 ({purchaseBreakdown.platformFeePercentage}%):</span>
+                    <span>{ethers.utils.formatEther(purchaseBreakdown.platformFee)} ETH</span>
+                  </div>
+                  
+                  {purchaseBreakdown.royaltyPercentage > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>创作者版税 ({purchaseBreakdown.royaltyPercentage}%):</span>
+                      <span>{ethers.utils.formatEther(purchaseBreakdown.royaltyFee)} ETH</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                    <span>卖家收入:</span>
+                    <span>{ethers.utils.formatEther(purchaseBreakdown.sellerReceives)} ETH</span>
+                  </div>
+                </div>
+                
+                {purchaseBreakdown.creator && 
+                 purchaseBreakdown.creator !== ethers.constants.AddressZero && 
+                 purchaseBreakdown.royaltyPercentage > 0 && (
+                  <div className="mt-3 text-sm text-green-600">
+                    <p>
+                      * 购买此资源将支付{purchaseBreakdown.royaltyPercentage}%的版税给原创作者，
+                      支持学术创作持续发展。
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 操作按钮 */}
         <div className="flex justify-end space-x-4">
@@ -260,7 +341,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
             </button>
           ) : !isPurchased ? (
             <button
-              onClick={handlePurchase}
+              onClick={() => setShowPurchaseDialog(true)}
               disabled={isPurchasing}
               className="px-6 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all hover:scale-105 disabled:opacity-70 disabled:hover:scale-100 disabled:hover:bg-gray-900"
             >
@@ -293,6 +374,69 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
           )}
         </div>
       </div>
+
+      {/* 在资源详情部分添加版税信息显示 */}
+      <div className="bg-white shadow rounded-lg p-6 mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">资源详情</h2>
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">标题</h3>
+            <p className="mt-1 text-gray-600">{resource.title}</p>
+          </div>
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">描述</h3>
+            <p className="mt-1 text-gray-600">{resource.abstract}</p>
+          </div>
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">创作者</h3>
+            <p className="mt-1 text-gray-600">{resource.creator}</p>
+          </div>
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">版税比例</h3>
+            <p className="mt-1 text-gray-600">{resource.royaltyPercentage}%</p>
+            <p className="mt-1 text-sm text-gray-500">每次交易时创作者将获得此比例的收益</p>
+          </div>
+          {resource.listing?.isActive && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">当前价格</h3>
+              <p className="mt-1 text-gray-600">{ethers.utils.formatEther(resource.price)} ETH</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 在购买确认对话框中添加版税信息 */}
+      {showPurchaseDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">确认购买</h3>
+            <div className="space-y-4">
+              <p className="text-gray-600">您确定要购买这个资源吗？</p>
+              <div className="bg-gray-50 p-4 rounded-md">
+                <p className="text-sm text-gray-600">总价：{ethers.utils.formatEther(resource.price)} ETH</p>
+                <p className="text-sm text-gray-600">平台服务费：{ethers.utils.formatEther(purchaseBreakdown.platformFee)} ETH (2%)</p>
+                <p className="text-sm text-gray-600">创作者版税：{ethers.utils.formatEther(purchaseBreakdown.royaltyFee)} ETH ({resource.royaltyPercentage}%)</p>
+                <p className="text-sm text-gray-600">卖家收入：{ethers.utils.formatEther(purchaseBreakdown.sellerReceives)} ETH</p>
+              </div>
+              <div className="flex justify-end space-x-4">
+                <button
+                  onClick={() => setShowPurchaseDialog(false)}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handlePurchase}
+                  disabled={isPurchasing}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isPurchasing ? '购买中...' : '确认购买'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

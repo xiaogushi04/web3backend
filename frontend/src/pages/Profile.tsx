@@ -29,7 +29,9 @@ const Profile: React.FC = () => {
     uploads: 0,
     transfers: 0,
     references: 0,
-    earnings: '0.00'
+    earnings: '0.00',
+    sellerEarnings: '0.00',
+    creatorEarnings: '0.00'
   });
 
   const fetchUserResources = useCallback(async () => {
@@ -71,13 +73,17 @@ const Profile: React.FC = () => {
       uploads: resources.length,
       transfers: 0,
       references: 0,
-      earnings: '0.00'
+      earnings: '0.00',
+      sellerEarnings: '0.00',
+      creatorEarnings: '0.00'
     };
     
     // 从交易数据中获取交易次数和收益
     if (transactionData) {
       stats.transfers = transactionData.totalTransfers || 0;
       stats.earnings = transactionData.totalEarnings || '0.00';
+      stats.sellerEarnings = transactionData.sellerEarnings || '0.00';
+      stats.creatorEarnings = transactionData.creatorEarnings || '0.00';
     }
     
     // 计算引用次数
@@ -197,6 +203,10 @@ const Profile: React.FC = () => {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">总收益</h3>
           <p className="text-3xl font-bold text-gray-900">{userStats.earnings} ETH</p>
+          <div className="mt-2 text-sm text-gray-600">
+            <p>销售收益：{userStats.sellerEarnings} ETH</p>
+            <p>版税收益：{userStats.creatorEarnings} ETH</p>
+          </div>
         </div>
       </div>
 
