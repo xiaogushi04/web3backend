@@ -1,5 +1,5 @@
 import { sepolia } from 'wagmi/chains';
-import { ACADEMIC_NFT_ABI, MARKET_ABI } from './contracts';
+import { ACADEMIC_NFT_ABI, MARKET_ABI, ACCESS_TOKEN_ABI } from './contracts';
 // 定义本地 Ganache 网络
 const localhost = {
   id: 1337,
@@ -31,7 +31,7 @@ export const blockchainConfig = {
   contracts: {
     academicNFT: {
       // address: '0xFD67221D00b9b87505D679C125d1433991d982C4',
-      address: '0x8311284A7B127e3E406D1aEe9faa4361CB6ea99B',
+      address: '0x2d00C3501bc0F7C74Ba731C5e927C69ee4b6Ffd0',
       // chainId: sepolia.id
       chainId: localhost.id,
       abi: ACADEMIC_NFT_ABI
@@ -44,10 +44,16 @@ export const blockchainConfig = {
     },
     market: {
       // address: '0xAb36758DFFe216E4fb2D56e5c175F677d1D4c30c',
-      address: '0x03669128f1C5579c629EDCaDA165878409a2E007',
+      address: '0x59816B9Db8Adb4d786587B14906ae8D512a734c6',
       // chainId: sepolia.id
       chainId: localhost.id,
       abi: MARKET_ABI
+    },
+    accessToken: {
+      address: '0x325eB5a12ad15bb99f14F212Ad7B93A1B1B508fe',
+      // chainId: sepolia.id
+      chainId: localhost.id,
+      abi: ACCESS_TOKEN_ABI
     }
   },
   // RPC配置

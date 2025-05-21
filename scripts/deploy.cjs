@@ -1,117 +1,74 @@
 const hre = require("hardhat");
 
 async function main() {
-  console.log("开始编译合约...");
-  await hre.run("compile");
-  console.log("合约编译完成");
+  const [deployer] = await hre.ethers.getSigners();
+  console.log("使用账户地址部署合约:", deployer.address);
 
-  // 1. 部署 AcademicNFT 合约
-  console.log("\n开始部署 AcademicNFT 合约...");
+  // 部署 AcademicNFT 合约
   const AcademicNFT = await hre.ethers.getContractFactory("AcademicNFT");
   const academicNFT = await AcademicNFT.deploy();
   await academicNFT.waitForDeployment();
-  const academicNFTAddress = await academicNFT.getAddress();
-  console.log(`AcademicNFT 合约已部署到: ${academicNFTAddress}`);
-  const academicNFTReceipt = await academicNFT.deploymentTransaction();
-  if (academicNFTReceipt) {
-    await academicNFTReceipt.wait(1);
-  }
+  console.log("AcademicNFT 合约已部署到:", await academicNFT.getAddress());
 
-  // 2. 部署 AcademicNFTWithQueries 合约
-  console.log("\n开始部署 AcademicNFTWithQueries 合约...");
-  const AcademicNFTWithQueries = await hre.ethers.getContractFactory("AcademicNFTWithQueries");
-  const academicNFTWithQueries = await AcademicNFTWithQueries.deploy();
-  await academicNFTWithQueries.waitForDeployment();
-  const academicNFTWithQueriesAddress = await academicNFTWithQueries.getAddress();
-  console.log(`AcademicNFTWithQueries 合约已部署到: ${academicNFTWithQueriesAddress}`);
-  const academicNFTWithQueriesReceipt = await academicNFTWithQueries.deploymentTransaction();
-  if (academicNFTWithQueriesReceipt) {
-    await academicNFTWithQueriesReceipt.wait(1);
-  }
+  // 部署 AccessToken 合约，传入AcademicNFT合约地址
+  const AccessToken = await hre.ethers.getContractFactory("AccessToken");
+  const accessToken = await AccessToken.deploy(await academicNFT.getAddress());
+  await accessToken.waitForDeployment();
+  console.log("AccessToken 合约已部署到:", await accessToken.getAddress());
 
-  // 3. 部署 Market 合约，依赖 AcademicNFT 地址
-  console.log("\n开始部署 Market 合约...");
+  // 部署 Market 合约
   const Market = await hre.ethers.getContractFactory("AcademicMarket");
-  const [deployer] = await hre.ethers.getSigners();
-  const feeRecipient = deployer.address;
-  const market = await Market.deploy(feeRecipient, academicNFTAddress);
+  const market = await Market.deploy(
+    deployer.address, // feeRecipient
+    await academicNFT.getAddress(), // nftContract
+    await accessToken.getAddress() // accessTokenContract
+  );
   await market.waitForDeployment();
-  const marketAddress = await market.getAddress();
-  console.log(`Market 合约已部署到: ${marketAddress}`);
-  const marketReceipt = await market.deploymentTransaction();
-  if (marketReceipt) {
-    await marketReceipt.wait(1);
-  }
+  console.log("Market 合约已部署到:", await market.getAddress());
 
-  // 4. 部署 Reference 合约
-  console.log("\n开始部署 Reference 合约...");
-  const Reference = await hre.ethers.getContractFactory("Reference");
-  const reference = await Reference.deploy();
-  await reference.waitForDeployment();
-  const referenceAddress = await reference.getAddress();
-  console.log(`Reference 合约已部署到: ${referenceAddress}`);
-  const referenceReceipt = await reference.deploymentTransaction();
-  if (referenceReceipt) {
-    await referenceReceipt.wait(1);
-  }
-
-  // 输出所有合约地址
-  console.log("\n部署完成！请将以下地址添加到 .env 文件中：");
-  console.log(`ACADEMIC_NFT_ADDRESS=${academicNFTAddress}`);
-  console.log(`ACADEMIC_NFT_WITH_QUERIES_ADDRESS=${academicNFTWithQueriesAddress}`);
-  console.log(`MARKET_CONTRACT_ADDRESS=${marketAddress}`);
-  console.log(`REFERENCE_CONTRACT_ADDRESS=${referenceAddress}`);
+  // 设置访问权合约的所有者为 Market 合约
+  const accessTokenContract = await hre.ethers.getContractAt("AccessToken", await accessToken.getAddress());
+  await accessTokenContract.transferOwnership(await market.getAddress());
+  console.log("AccessToken 合约所有权已转移给 Market 合约");
 
   // 验证合约
-  // console.log("\n开始验证 AcademicNFT 合约...");
-  // try {
-  //   await hre.run("verify:verify", {
-  //     address: academicNFTAddress,
-  //     constructorArguments: [],
-  //   });
-  //   console.log("AcademicNFT 合约验证成功！");
-  // } catch (error) {
-  //   console.error("AcademicNFT 合约验证失败:", error.message);
-  // }
+  if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
+    console.log("等待区块确认...");
+    await market.deployTransaction.wait(6);
 
-  // console.log("\n开始验证 AcademicNFTWithQueries 合约...");
-  // try {
-  //   await hre.run("verify:verify", {
-  //     address: academicNFTWithQueriesAddress,
-  //     constructorArguments: [],
-  //   });
-  //   console.log("AcademicNFTWithQueries 合约验证成功！");
-  // } catch (error) {
-  //   console.error("AcademicNFTWithQueries 合约验证失败:", error.message);
-  // }
+    console.log("开始验证合约...");
+    await hre.run("verify:verify", {
+      address: await academicNFT.getAddress(),
+      constructorArguments: [],
+    });
 
-  // console.log("\n开始验证 Market 合约...");
-  // try {
-  //   await hre.run("verify:verify", {
-  //     address: marketAddress,
-  //     constructorArguments: [feeRecipient, academicNFTAddress],
-  //   });
-  //   console.log("Market 合约验证成功！");
-  // } catch (error) {
-  //   console.error("Market 合约验证失败:", error.message);
-  // }
+    await hre.run("verify:verify", {
+      address: await accessToken.getAddress(),
+      constructorArguments: [await academicNFT.getAddress()],
+    });
 
-  // console.log("\n开始验证 Reference 合约...");
-  // try {
-  //   await hre.run("verify:verify", {
-  //     address: referenceAddress,
-  //     constructorArguments: [],
-  //   });
-  //   console.log("Reference 合约验证成功！");
-  // } catch (error) {
-  //   console.error("Reference 合约验证失败:", error.message);
-  // }
+    await hre.run("verify:verify", {
+      address: await market.getAddress(),
+      constructorArguments: [
+        deployer.address,
+        await academicNFT.getAddress(),
+        await accessToken.getAddress(),
+      ],
+    });
+  }
+
+  console.log("部署完成！");
+  console.log("AcademicNFT 合约地址:", await academicNFT.getAddress());
+  console.log("AccessToken 合约地址:", await accessToken.getAddress());
+  console.log("Market 合约地址:", await market.getAddress());
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-}); 
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 
 
 // 运行脚本

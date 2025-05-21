@@ -5,6 +5,9 @@ import indexerService from './indexer.service.js';
 import cacheService from './cache.js';
 import logger from '../utils/logger.js';
 import NFT from '../models/nft.model.js';
+import AcademicNFT from '../../artifacts/src/contracts/AcademicNFT.sol/AcademicNFT.json' assert { type: 'json' };
+import Market from '../../artifacts/src/contracts/Market.sol/AcademicMarket.json' assert { type: 'json' };
+import AccessToken from '../../artifacts/src/contracts/AccessToken.sol/AccessToken.json' assert { type: 'json' };
 
 export class ContractService {
     constructor() {
@@ -44,11 +47,17 @@ export class ContractService {
             contracts.market.abi,
             this.wallet
         );
+        this.accessTokenContract = new ethers.Contract(
+            contracts.accessToken.address,
+            contracts.accessToken.abi,
+            this.wallet
+        );
 
         // 添加合约地址日志
         logger.info('合约初始化完成:');
         logger.info(`NFT合约地址: ${contracts.academicNFT.address}`);
         logger.info(`Market合约地址: ${contracts.market.address}`);
+        logger.info(`AccessToken合约地址: ${contracts.accessToken.address}`);
         logger.info(`Provider URL: ${config.blockchain.rpcUrl}`);
         logger.info(`Wallet地址: ${this.wallet.address}`);
 
@@ -67,6 +76,7 @@ export class ContractService {
         this.marketContract.removeAllListeners('TokenSold');
         this.marketContract.removeAllListeners('TokenListed');
         this.marketContract.removeAllListeners('RoyaltyPaid');
+        this.marketContract.removeAllListeners('AccessTokenSold');
 
         // 监听 TokenListed 事件
         this.marketContract.on('TokenListed', async (tokenId, seller, price, event) => {
@@ -247,6 +257,37 @@ export class ContractService {
             }
         });
 
+        // 监听 AccessTokenSold 事件
+        this.marketContract.on('AccessTokenSold', async (resourceId, buyer, accessTokenId, price, event) => {
+            try {
+                const eventId = `${event.transactionHash}-${event.logIndex}`;
+                if (this.processedEvents.has(eventId)) {
+                    logger.info('AccessTokenSold event already processed:', eventId);
+                    return;
+                }
+
+                logger.info('AccessTokenSold event detected:', {
+                    resourceId: resourceId.toString(),
+                    buyer,
+                    accessTokenId: accessTokenId.toString(),
+                    price: ethers.formatEther(price),
+                    transactionHash: event.transactionHash,
+                    blockNumber: event.blockNumber
+                });
+
+                // 等待交易确认
+                const receipt = await event.getTransactionReceipt();
+                if (receipt.status === 0) {
+                    logger.error('Transaction failed:', event.transactionHash);
+                    return;
+                }
+
+                this.processedEvents.add(eventId);
+            } catch (error) {
+                logger.error('Error processing AccessTokenSold event:', error);
+            }
+        });
+
         logger.info('事件监听设置完成');
     }
 
@@ -331,6 +372,20 @@ export class ContractService {
 
             if (!tokenId) {
                 throw new Error('未能从交易中获取tokenId');
+            }
+
+            // 检查数据库中是否已存在该 tokenId
+            const existingNFT = await NFT.findOne({ tokenId: tokenId });
+            if (existingNFT) {
+                logger.warn(`TokenId ${tokenId} 已存在于数据库中，跳过创建新记录`);
+                return {
+                    success: true,
+                    tokenId: tokenId,
+                    transactionHash: receipt.hash,
+                    block: receipt.blockNumber,
+                    royaltyPercentage: royaltyPercentage,
+                    message: 'NFT已存在'
+                };
             }
 
             logger.info('准备创建NFT记录:', {
@@ -511,6 +566,23 @@ export class ContractService {
             logger.info(`Price: ${price} ETH`);
             logger.info(`Signature: ${signature}`);
 
+            // 检查 tokenId 是否存在
+            try {
+                const totalSupply = await this.academicNFTContract.totalResources();
+                logger.info(`当前NFT总数: ${totalSupply}`);
+                
+                if (BigInt(tokenId) > BigInt(totalSupply)) {
+                    logger.error(`TokenId ${tokenId} 不存在，当前最大 tokenId 为 ${totalSupply}`);
+                    return {
+                        success: false,
+                        message: 'NFT不存在'
+                    };
+                }
+            } catch (error) {
+                logger.error(`检查NFT存在性失败: ${error.message}`);
+                throw new Error(`检查NFT存在性失败: ${error.message}`);
+            }
+
             // 验证签名
             const message = `List token ${tokenId} for ${price} ETH`;
             const recoveredAddress = ethers.verifyMessage(message, signature);
@@ -537,8 +609,6 @@ export class ContractService {
             // 检查Market合约是否已授权
             try {
                 logger.info('开始检查Market合约授权...');
-                logger.info(`检查地址: ${recoveredAddress} 是否授权给 ${contracts.market.address}`);
-                
                 const isApproved = await this.academicNFTContract.isApprovedForAll(
                     recoveredAddress,
                     contracts.market.address
@@ -554,7 +624,7 @@ export class ContractService {
                         data: {
                             marketAddress: contracts.market.address,
                             nftAddress: contracts.academicNFT.address,
-                            price: price
+                            price: price.toString()
                         }
                     };
                 }
@@ -562,14 +632,15 @@ export class ContractService {
                 logger.error(`检查Market合约授权失败: ${error.message}`);
                 throw new Error(`检查Market合约授权失败: ${error.message}`);
             }
-
+            
             // 检查NFT是否已经上架
             try {
                 logger.info('检查NFT上架状态...');
                 const listing = await this.marketContract.listings(tokenId);
+                const listingPrice = ethers.formatEther(listing.price);
                 logger.info(`NFT当前上架状态:`, {
                     seller: listing.seller,
-                    price: ethers.formatEther(listing.price),
+                    price: listingPrice,
                     isActive: listing.isActive
                 });
 
@@ -677,14 +748,14 @@ export class ContractService {
 
     async getListing(tokenId) {
         try {
-            const listing = await this.academicNFTContract.getListing(tokenId);
+            const listing = await this.marketContract.getListing(tokenId);
             return {
                 seller: listing.seller,
                 price: listing.price.toString(),
                 isActive: listing.isActive
             };
         } catch (error) {
-            console.error('获取上架详情失败:', error);
+            logger.error('获取上架详情失败:', error);
             throw error;
         }
     }
@@ -727,29 +798,432 @@ export class ContractService {
     // 获取购买费用明细
     async getPurchaseBreakdown(tokenId) {
         try {
-            // 确保Market合约已初始化
-            if (!this.marketContract) {
-                throw new Error('Market合约未初始化');
+            const listing = await this.getListing(tokenId);
+            if (!listing || !listing.isActive) {
+                throw new Error('资源未上架');
             }
 
-            // 调用合约的getPurchaseBreakdown方法
-            const [totalPrice, platformFee, royaltyFee, sellerReceives, creator] = 
-                await this.marketContract.getPurchaseBreakdown(tokenId);
-            
-            // 将大数字转换为字符串
+            const price = BigInt(listing.price);
+            const platformFeePercentage = BigInt(2); // 2%
+            const royaltyPercentage = BigInt(await this.getRoyaltyPercentage(tokenId));
+
+            const platformFee = (price * platformFeePercentage) / BigInt(100);
+            const royaltyFee = (price * royaltyPercentage) / BigInt(100);
+            const sellerReceives = price - platformFee - royaltyFee;
+
+            const creator = await this.getCreator(tokenId);
+
             return {
-                totalPrice: totalPrice.toString(),
+                totalPrice: price.toString(),
                 platformFee: platformFee.toString(),
                 royaltyFee: royaltyFee.toString(),
                 sellerReceives: sellerReceives.toString(),
-                creator,
-                // 添加百分比信息方便前端显示
-                platformFeePercentage: await this.marketContract.platformFeePercentage(),
-                royaltyPercentage: await this.marketContract.getRoyaltyPercentage(tokenId)
+                creator: creator,
+                platformFeePercentage: 2,
+                royaltyPercentage: Number(royaltyPercentage)
             };
         } catch (error) {
-            logger.error(`获取购买费用明细失败: tokenId=${tokenId}, error=${error.message}`);
+            logger.error('获取购买费用明细失败:', error);
             throw error;
+        }
+    }
+
+    async buyAccessToken(resourceId, userAddress, duration, maxUses, signature, message) {
+        logger.info(`[ContractService] buyAccessToken: Entering - resourceId: ${resourceId}, userAddress: ${userAddress}, duration: ${duration}, maxUses: ${maxUses}`);
+        try {
+            // 检查AccessToken合约的所有者
+            const accessTokenOwner = await this.accessTokenContract.owner();
+            logger.info(`[ContractService] buyAccessToken: AccessToken contract owner: ${accessTokenOwner}`);
+            logger.info(`[ContractService] buyAccessToken: Market contract address: ${this.marketContract.address}`);
+
+            // 验证签名
+            const expectedMessage = `Buy Access Token for resource ${resourceId}`;
+            logger.info(`[ContractService] buyAccessToken: Expected message for signature: '${expectedMessage}'`);
+            logger.info(`[ContractService] buyAccessToken: Received message for signature: '${message}'`);
+            logger.info(`[ContractService] buyAccessToken: Received signature: '${signature}'`);
+
+            // 从 AccessToken 合约获取价格配置
+            const accessConfig = await this.accessTokenContract.getResourceAccessConfig(resourceId);
+            const price = accessConfig[2]; // price is the third return value
+            const isActive = accessConfig[3]; // isActive is the fourth return value
+            logger.info(`[ContractService] buyAccessToken: Fetched access token price: ${price.toString()} for resourceId: ${resourceId}, isActive: ${isActive}`);
+
+            if (!price || price.toString() === "0" || !isActive) {
+                logger.warn(`[ContractService] buyAccessToken: Access token not properly configured for resourceId: ${resourceId} (price=${price}, isActive=${isActive})`);
+                throw new Error('ACCESS_CONFIG_REQUIRED:该资源的访问权配置尚未设置或未激活，请联系资源所有者设置访问权配置');
+            }
+
+            // 检查用户余额
+            const userBalance = await this.provider.getBalance(userAddress);
+            logger.info(`[ContractService] buyAccessToken: User balance: ${userBalance.toString()}, Required price: ${price.toString()}`);
+            if (userBalance < price) {
+                logger.warn(`[ContractService] buyAccessToken: Insufficient funds - User balance (${userBalance.toString()}) is less than required price (${price.toString()})`);
+                throw new Error('INSUFFICIENT_FUNDS:用户余额不足，无法支付访问权费用');
+            }
+
+            // 检查资源是否存在
+            const exists = await this.isResourceExists(resourceId);
+            if (!exists) {
+                logger.error(`[ContractService] buyAccessToken: Resource ${resourceId} does not exist`);
+                throw new Error('RESOURCE_NOT_FOUND:资源不存在');
+            }
+
+            // 检查是否还有可用的访问权名额
+            const currentTokens = BigInt(accessConfig[1]); // currentAccessTokens is the second return value
+            const maxTokens = BigInt(accessConfig[0]); // maxAccessTokens is the first return value
+            if (currentTokens >= maxTokens) {
+                logger.error(`[ContractService] buyAccessToken: No more access tokens available for resource ${resourceId} (${currentTokens}/${maxTokens})`);
+                throw new Error('NO_TOKENS_AVAILABLE:该资源的访问权已售罄');
+            }
+
+            // 检查用户是否已经拥有该资源的访问权
+            const accessStatus = await this.checkAccess(resourceId, userAddress);
+            if (accessStatus.hasAccess) {
+                logger.error(`[ContractService] buyAccessToken: User ${userAddress} already has access to resource ${resourceId}`);
+                throw new Error('ALREADY_HAS_ACCESS:您已经拥有该资源的访问权');
+            }
+
+            // 检查参数有效性
+            if (duration <= 0) {
+                throw new Error('INVALID_DURATION:访问时长必须大于0');
+            }
+            if (maxUses <= 0) {
+                throw new Error('INVALID_MAX_USES:最大使用次数必须大于0');
+            }
+
+            try {
+                // 直接使用固定的gas限制
+                const gasLimit = 500000; // 使用较大的固定值
+                logger.info(`[ContractService] buyAccessToken: Using fixed gas limit: ${gasLimit}`);
+
+                // 构造交易选项
+                const txOptions = {
+                    value: price,
+                    gasLimit: gasLimit
+                };
+
+                logger.info(`[ContractService] buyAccessToken: Sending transaction with options:`, {
+                    resourceId,
+                    duration,
+                    maxUses,
+                    value: price.toString(),
+                    gasLimit: gasLimit.toString()
+                });
+
+                const tx = await this.marketContract.buyAccessToken(
+                    resourceId,
+                    duration,
+                    maxUses,
+                    txOptions
+                );
+
+                logger.info(`[ContractService] buyAccessToken: Transaction sent, tx hash: ${tx.hash}`);
+                
+                // 等待交易确认
+                logger.info(`[ContractService] buyAccessToken: Waiting for transaction confirmation...`);
+                const receipt = await tx.wait();
+                logger.info(`[ContractService] buyAccessToken: Transaction confirmed, receipt:`, {
+                    blockNumber: receipt.blockNumber,
+                    gasUsed: receipt.gasUsed.toString(),
+                    status: receipt.status
+                });
+
+                // 从事件中提取 accessTokenId
+                let accessTokenId = null;
+                if (receipt.events) {
+                    const accessTokenSoldEvent = receipt.events.find(e => e.event === 'AccessTokenSold');
+                    if (accessTokenSoldEvent && accessTokenSoldEvent.args) {
+                        accessTokenId = accessTokenSoldEvent.args.accessTokenId.toString();
+                        logger.info(`[ContractService] buyAccessToken: AccessTokenId from event: ${accessTokenId}`);
+                    }
+                }
+
+                return {
+                    success: true,
+                    accessTokenId,
+                    transactionHash: tx.hash
+                };
+            } catch (txError) {
+                // 捕获并记录合约调用错误
+                const errorMessage = txError.message || '未知错误';
+                const errorReason = txError.reason || (txError.error?.reason) || '未提供原因';
+                const errorCode = txError.code || (txError.error?.code) || 'UNKNOWN';
+                
+                logger.error(`[ContractService] buyAccessToken: Transaction error: ${errorMessage}, Reason: ${errorReason}, Code: ${errorCode}`);
+                
+                if (errorMessage.includes('insufficient funds') || errorCode === 'INSUFFICIENT_FUNDS') {
+                    throw new Error('INSUFFICIENT_FUNDS:用户余额不足，无法支付访问权费用');
+                }
+                
+                if (errorMessage.includes('gas required exceeds allowance')) {
+                    throw new Error('GAS_LIMIT:交易所需Gas超过允许范围，请增加Gas限制或减少操作复杂度');
+                }
+                
+                throw new Error(`CONTRACT_ERROR:合约执行失败: ${errorReason || errorMessage}`);
+            }
+        } catch (error) {
+            logger.error(`[ContractService] buyAccessToken: Error purchasing access token for resourceId ${resourceId}, user ${userAddress}: `, error);
+            // 保留原始错误类型，便于前端处理
+            if (error.message.startsWith('ACCESS_CONFIG_REQUIRED:') || 
+                error.message.startsWith('INSUFFICIENT_FUNDS:') ||
+                error.message.startsWith('GAS_LIMIT:') ||
+                error.message.startsWith('CONTRACT_ERROR:')) {
+                throw error; // 直接抛出带前缀的错误
+            }
+            // 其他未分类的错误
+            throw new Error(`UNKNOWN_ERROR:购买访问权失败: ${error.message}`);
+        }
+    }
+
+    async useAccessToken(accessTokenId, userAddress) {
+        try {
+            const tx = await this.marketContract.useAccessToken(accessTokenId, {
+                from: userAddress
+            });
+            return tx;
+        } catch (error) {
+            logger.error('使用访问权失败:', error);
+            throw error;
+        }
+    }
+
+    async burnAccessToken(accessTokenId, userAddress) {
+        try {
+            const tx = await this.marketContract.burnAccessToken(accessTokenId, {
+                from: userAddress
+            });
+            return tx;
+        } catch (error) {
+            logger.error('销毁访问权失败:', error);
+            throw error;
+        }
+    }
+
+    async getAccessToken(accessTokenId) {
+        try {
+            const accessToken = await this.marketContract.accessTokens(accessTokenId);
+            return {
+                id: accessTokenId,
+                owner: accessToken.owner,
+                resourceId: accessToken.resourceId,
+                expiresAt: accessToken.expiresAt,
+                usesLeft: accessToken.usesLeft
+            };
+        } catch (error) {
+            logger.error('获取访问权信息失败:', error);
+            throw error;
+        }
+    }
+
+    async checkAccess(resourceId, userAddress) {
+        logger.info(`[ContractService] checkAccess: Checking access for resourceId: ${resourceId}, userAddress: ${userAddress}`);
+        try {
+            const userAccessTokens = await this.accessTokenContract.getUserAccessTokens(userAddress);
+            logger.info(`[ContractService] checkAccess: User ${userAddress} has ${userAccessTokens.length} access tokens. Tokens: [${userAccessTokens.join(', ')}]`);
+            
+            if (userAccessTokens.length === 0) {
+                logger.info(`[ContractService] checkAccess: User ${userAddress} has no access tokens. Access denied for resourceId ${resourceId}.`);
+                return {
+                    hasAccess: false,
+                    accessToken: null
+                };
+            }
+
+            for (const tokenId of userAccessTokens) {
+                logger.info(`[ContractService] checkAccess: Checking token ID: ${tokenId} for user ${userAddress}...`);
+                const metadata = await this.accessTokenContract.getAccessMetadata(tokenId);
+                logger.info(`[ContractService] checkAccess: Metadata for token ID ${tokenId}: resourceId=${metadata.resourceId}, isActive=${metadata.isActive}, expiryTime=${metadata.expiryTime}, usedCount=${metadata.usedCount}, maxUses=${metadata.maxUses}`);
+                
+                if (metadata.resourceId.toString() === resourceId.toString() &&
+                    metadata.isActive &&
+                    BigInt(metadata.expiryTime) > BigInt(Math.floor(Date.now() / 1000)) &&
+                    BigInt(metadata.usedCount) < BigInt(metadata.maxUses)) {
+                    
+                    logger.info(`[ContractService] checkAccess: Valid access token found for resourceId ${resourceId}`);
+                    return {
+                        hasAccess: true,
+                        accessToken: {
+                            tokenId: tokenId.toString(),
+                            resourceId: metadata.resourceId.toString(),
+                            accessType: 'temporary',
+                            expiryTime: new Date(Number(metadata.expiryTime) * 1000),
+                            maxUses: Number(metadata.maxUses),
+                            usedCount: Number(metadata.usedCount),
+                            isActive: metadata.isActive
+                        }
+                    };
+                }
+            }
+
+            logger.info(`[ContractService] checkAccess: No valid access token found for resourceId ${resourceId}`);
+            return {
+                hasAccess: false,
+                accessToken: null
+            };
+        } catch (error) {
+            logger.error(`[ContractService] checkAccess: Error checking access for resourceId ${resourceId}, userAddress ${userAddress}:`, error);
+            throw error;
+        }
+    }
+
+    async getRoyaltyPercentage(resourceId) {
+        logger.info(`[ContractService] getRoyaltyPercentage: Getting royalty percentage for resourceId: ${resourceId}`);
+        try {
+            // 尝试调用 marketContract 上的 getRoyaltyPercentage
+            // 注意：此方法在 Market.sol 中是 public view
+            const royalty = await this.marketContract.getRoyaltyPercentage(resourceId);
+            logger.info(`[ContractService] getRoyaltyPercentage: Royalty percentage for resourceId ${resourceId} is ${royalty.toString()}`);
+            return royalty;
+        } catch (error) {
+            logger.error(`[ContractService] getRoyaltyPercentage: Error getting royalty percentage for resourceId ${resourceId}: `, error);
+            // 如果合约调用失败，可以返回一个默认值或继续抛出错误
+            // 这里我们选择继续抛出错误，因为这是一个预期应该存在的方法
+            throw error;
+        }
+    }
+
+    async getCreator(resourceId) {
+        logger.info(`[ContractService] getCreator: Fetching metadata for resourceId: ${resourceId}`);
+        // metadata: title, description, ipfsHash, resourceType, authors, timestamp
+        const metadata = await this.academicNFTContract.getResourceMetadata(resourceId);
+        
+        // 转换为可安全记录的格式，避免BigInt序列化问题
+        const loggableMetadata = {
+            title: metadata.title,
+            description: metadata.description,
+            ipfsHash: metadata.ipfsHash,
+            resourceType: metadata.resourceType.toString(), 
+            authors: metadata.authors,
+            timestamp: metadata.timestamp.toString() 
+        };
+        logger.info(`[ContractService] getCreator: Metadata fetched for resourceId ${resourceId}: ${JSON.stringify(loggableMetadata)}`);
+
+        if (metadata && metadata.authors && metadata.authors.length > 0) {
+            logger.info(`[ContractService] getCreator: Found authors for resourceId ${resourceId}. First author (creator): ${metadata.authors[0]}`);
+            return metadata.authors[0]; // 假设第一个作者是创建者
+        }
+        logger.warn(`[ContractService] getCreator: No authors found for resourceId ${resourceId}. Returning address(0).`);
+        return ethers.constants.AddressZero;
+    }
+
+    // 获取资源访问权配置
+    async getAccessTokenConfig(resourceId) {
+        logger.info(`[ContractService] getAccessTokenConfig: 获取资源 ${resourceId} 的访问权配置`);
+        try {
+            // 调用 AccessToken 合约的 getResourceAccessConfig 方法
+            const config = await this.accessTokenContract.getResourceAccessConfig(resourceId);
+            logger.info(`[ContractService] getAccessTokenConfig: 获取到配置:`, {
+                maxAccessTokens: config[0].toString(),
+                currentAccessTokens: config[1].toString(),
+                price: config[2].toString(),
+                isActive: config[3]
+            });
+            
+            return {
+                maxAccessTokens: config[0].toString(),
+                currentAccessTokens: config[1].toString(),
+                price: config[2].toString(),
+                isActive: config[3]
+            };
+        } catch (error) {
+            logger.error(`[ContractService] getAccessTokenConfig: 获取访问权配置失败:`, error);
+            // 如果配置不存在，返回默认值
+            return {
+                maxAccessTokens: "100", 
+                currentAccessTokens: "0",
+                price: "10000000000000000", // 0.01 ETH
+                isActive: true,
+                error: error.message
+            };
+        }
+    }
+
+    // 设置资源访问权配置
+    async setAccessTokenConfig(resourceId, maxTokens, price, isActive, userAddress) {
+        logger.info(`[ContractService] setAccessTokenConfig: 设置资源 ${resourceId} 的访问权配置: maxTokens=${maxTokens}, price=${price}, isActive=${isActive}, userAddress=${userAddress}`);
+        try {
+            // 先检查用户是否是资源所有者或合约所有者
+            const isOwner = await this.isResourceOwner(resourceId, userAddress);
+            const isContractOwner = (await this.accessTokenContract.owner()).toLowerCase() === userAddress.toLowerCase();
+            
+            if (!isOwner && !isContractOwner) {
+                logger.error(`[ContractService] setAccessTokenConfig: 用户 ${userAddress} 不是资源 ${resourceId} 的所有者，也不是合约所有者`);
+                throw new Error('您不是该资源的所有者或访问权合约的所有者，无法设置访问权配置');
+            }
+            
+            // 调用 AccessToken 合约的 setResourceAccessConfig 方法
+            const tx = await this.accessTokenContract.setResourceAccessConfig(
+                resourceId,
+                maxTokens,
+                price,
+                isActive
+            );
+            
+            logger.info(`[ContractService] setAccessTokenConfig: 交易已发送, txHash: ${tx.hash}`);
+            
+            const receipt = await tx.wait();
+            logger.info(`[ContractService] setAccessTokenConfig: 交易已确认, blockNumber: ${receipt.blockNumber}, gasUsed: ${receipt.gasUsed.toString()}`);
+            
+            return {
+                transactionHash: tx.hash,
+                blockNumber: receipt.blockNumber,
+                maxTokens: maxTokens.toString(),
+                price: price.toString(),
+                isActive: isActive
+            };
+        } catch (error) {
+            logger.error(`[ContractService] setAccessTokenConfig: 设置访问权配置失败:`, error);
+            throw error;
+        }
+    }
+
+    // 检查用户是否是资源所有者
+    async isResourceOwner(resourceId, userAddress) {
+        logger.info(`[ContractService] isResourceOwner: 检查用户 ${userAddress} 是否是资源 ${resourceId} 的所有者`);
+        try {
+            const owner = await this.academicNFTContract.ownerOf(resourceId);
+            logger.info(`[ContractService] isResourceOwner: 资源 ${resourceId} 的所有者是 ${owner}`);
+            return owner.toLowerCase() === userAddress.toLowerCase();
+        } catch (error) {
+            logger.error(`[ContractService] isResourceOwner: 检查所有权失败:`, error);
+            return false;
+        }
+    }
+
+    // 检查资源是否存在
+    async isResourceExists(resourceId) {
+        logger.info(`[ContractService] isResourceExists: 检查资源 ${resourceId} 是否存在`);
+        try {
+            // 调用 AcademicNFT 合约的 ownerOf 方法检查资源是否存在
+            const owner = await this.academicNFTContract.ownerOf(resourceId);
+            logger.info(`[ContractService] isResourceExists: 资源 ${resourceId} 存在，所有者: ${owner}`);
+            return true;
+        } catch (error) {
+            logger.warn(`[ContractService] isResourceExists: 资源 ${resourceId} 不存在或查询失败: ${error.message}`);
+            return false;
+        }
+    }
+
+    // 获取资源的访问权配置
+    async getResourceAccessConfig(resourceId) {
+        logger.info(`[ContractService] getResourceAccessConfig: 获取资源 ${resourceId} 的访问权配置`);
+        try {
+            // 调用 AccessToken 合约的 getResourceAccessConfig 方法
+            const config = await this.accessTokenContract.getResourceAccessConfig(resourceId);
+            
+            // 格式化返回结果
+            const formattedConfig = {
+                maxAccessTokens: config[0].toString(),
+                currentAccessTokens: config[1].toString(),
+                price: config[2].toString(),
+                isActive: config[3]
+            };
+            
+            logger.info(`[ContractService] getResourceAccessConfig: 资源 ${resourceId} 的访问权配置: ${JSON.stringify(formattedConfig)}`);
+            return formattedConfig;
+        } catch (error) {
+            logger.error(`[ContractService] getResourceAccessConfig: 获取资源 ${resourceId} 的访问权配置失败: ${error.message}`);
+            throw new Error(`获取访问权配置失败: ${error.message}`);
         }
     }
 } 

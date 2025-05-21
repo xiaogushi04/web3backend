@@ -6,6 +6,7 @@ console.log('环境变量检查:');
 console.log('MARKET_CONTRACT_ADDRESS:', process.env.MARKET_CONTRACT_ADDRESS);
 console.log('ACADEMIC_NFT_CONTRACT_ADDRESS:', process.env.ACADEMIC_NFT_CONTRACT_ADDRESS);
 console.log('REFERENCE_CONTRACT_ADDRESS:', process.env.REFERENCE_CONTRACT_ADDRESS);
+console.log('ACCESS_TOKEN_ADDRESS:', process.env.ACCESS_TOKEN_ADDRESS);
 
 const config = {
   // 服务器配置
@@ -62,6 +63,7 @@ const config = {
     academicNFTAddress: process.env.ACADEMIC_NFT_CONTRACT_ADDRESS,
     referenceAddress: process.env.REFERENCE_CONTRACT_ADDRESS,
     marketAddress: process.env.MARKET_CONTRACT_ADDRESS,
+    accessTokenAddress: process.env.ACCESS_TOKEN_ADDRESS || '0xD92A7b96c01289e842a6d4f0197121979e9ae4b7',
     chainId: process.env.CHAIN_ID_LOCAL || '1337',  // Ganache默认chainId
     deploymentBlock: process.env.DEPLOYMENT_BLOCK ? parseInt(process.env.DEPLOYMENT_BLOCK) : 0
   },

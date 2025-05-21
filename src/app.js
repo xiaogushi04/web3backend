@@ -13,6 +13,7 @@ import cacheService from './services/cache.js';
 import indexerService from './services/indexer.service.js';
 import { ContractService } from './services/contract.service.js';
 import indexerRoutes from './routes/indexer.routes.js';
+import marketRoutes from './routes/market.routes.js';
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use((req, res, next) => {
 // 注册路由
 logger.info('注册路由: /api/contracts');
 app.use('/api/contracts', contractRoutes);
+app.use('/api/contracts', marketRoutes);
 logger.info('注册路由: /api/ipfs');
 app.use('/api/ipfs', uploadRoutes);
 logger.info('注册路由: /api/indexer');
@@ -55,8 +57,14 @@ app.use('/contracts', contractRoutes);
 logger.info('注册兼容路由: /ipfs');
 app.use('/ipfs', uploadRoutes);
 
-// 简单打印路由信息
+// 添加路由信息
 logger.info('===== 已注册的路由 =====');
+logger.info('- /api/contracts/access/check/:resourceId (GET)');
+logger.info('- /api/contracts/access/buy (POST)');
+logger.info('- /api/contracts/access/use (POST)');
+logger.info('- /api/contracts/access/burn (POST)');
+logger.info('- /api/contracts/access/:accessTokenId (GET)');
+logger.info('- /api/contracts/purchase-breakdown/:tokenId (GET)');
 logger.info('- /api/contracts/mint-with-file (POST)');
 logger.info('- /api/contracts/mint (POST)');
 logger.info('- /api/contracts/resource/:tokenId (GET)');

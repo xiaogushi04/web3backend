@@ -32,6 +32,9 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
     // NFT合约地址
     address public nftContract;
 
+    // 访问权合约地址
+    address public accessTokenContract;
+
     // 上架信息结构
     struct Listing {
         address seller;
@@ -56,12 +59,24 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
     event FeeRecipientUpdated(address newFeeRecipient);
     event NFTContractUpdated(address newNFTContract);
     event RoyaltyPaid(uint256 indexed tokenId, address indexed creator, uint256 amount);
+    event AccessTokenSold(
+        uint256 indexed resourceId,
+        address indexed buyer,
+        uint256 indexed accessTokenId,
+        uint256 price
+    );
 
-    constructor(address _feeRecipient, address _nftContract) Ownable() {
+    constructor(
+        address _feeRecipient,
+        address _nftContract,
+        address _accessTokenContract
+    ) Ownable() {
         require(_feeRecipient != address(0), "Invalid fee recipient address");
         require(_nftContract != address(0), "Invalid NFT contract address");
+        require(_accessTokenContract != address(0), "Invalid access token contract address");
         feeRecipient = _feeRecipient;
         nftContract = _nftContract;
+        accessTokenContract = _accessTokenContract;
     }
 
     // 上架 NFT
@@ -259,4 +274,113 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
         
         return (totalPrice, platformFee, royaltyFee, sellerReceives, creator);
     }
+
+    // 购买NFT访问权
+    function buyAccessToken(
+        uint256 resourceId,
+        uint256 duration,
+        uint256 maxUses
+    ) external payable nonReentrant {
+        // 检查参数有效性
+        require(duration > 0, "Duration must be greater than 0");
+        require(maxUses > 0, "Max uses must be greater than 0");
+        
+        // 检查资源是否存在
+        address resourceOwner = IERC721(nftContract).ownerOf(resourceId);
+        require(resourceOwner != address(0), "Resource does not exist");
+        
+        // 获取访问权配置
+        (uint256 maxAccessTokens, uint256 currentAccessTokens, uint256 price, bool isActive) = 
+            IAccessToken(accessTokenContract).getResourceAccessConfig(resourceId);
+            
+        require(isActive, "Access token sales not active for this resource");
+        require(currentAccessTokens < maxAccessTokens, "Maximum access tokens reached");
+        require(msg.value >= price, "Insufficient payment");
+
+        // 调用访问权合约铸造访问权
+        uint256 accessTokenId = IAccessToken(accessTokenContract).mintAccessToken{value: price}(
+            resourceId,
+            IAccessToken.AccessType.Read,
+            duration,
+            maxUses
+        );
+
+        // 计算费用分配
+        uint256 platformFee = (price * platformFeePercentage) / 100;
+        uint256 royaltyFee = (price * getRoyaltyPercentage(resourceId)) / 100;
+        uint256 ownerAmount = price - platformFee - royaltyFee;
+
+        // 转移费用
+        if (platformFee > 0) {
+            (bool feeSuccess, ) = payable(feeRecipient).call{value: platformFee}("");
+            require(feeSuccess, "Platform fee transfer failed");
+        }
+
+        address creator = _getOriginalCreator(resourceId);
+        if (royaltyFee > 0 && creator != address(0)) {
+            (bool royaltySuccess, ) = payable(creator).call{value: royaltyFee}("");
+            require(royaltySuccess, "Royalty fee transfer failed");
+            emit RoyaltyPaid(resourceId, creator, royaltyFee);
+        }
+
+        if (ownerAmount > 0) {
+            (bool ownerSuccess, ) = payable(resourceOwner).call{value: ownerAmount}("");
+            require(ownerSuccess, "Owner payment transfer failed");
+        }
+
+        // 退还多余的ETH
+        uint256 excess = msg.value - price;
+        if (excess > 0) {
+            (bool refundSuccess, ) = payable(msg.sender).call{value: excess}("");
+            require(refundSuccess, "Refund failed");
+        }
+
+        emit AccessTokenSold(resourceId, msg.sender, accessTokenId, price);
+    }
+
+    // 更新访问权合约地址
+    function updateAccessTokenContract(address newAccessTokenContract) external onlyOwner {
+        require(newAccessTokenContract != address(0), "Invalid access token contract address");
+        accessTokenContract = newAccessTokenContract;
+    }
+
+    // 获取访问权价格明细
+    function getAccessTokenBreakdown(uint256 resourceId) external view returns (
+        uint256 totalPrice,
+        uint256 platformFee,
+        uint256 royaltyFee,
+        uint256 ownerReceives,
+        address creator
+    ) {
+        (,,uint256 price,) = IAccessToken(accessTokenContract).getResourceAccessConfig(resourceId);
+        
+        platformFee = (price * platformFeePercentage) / 100;
+        uint256 royaltyPercentage = getRoyaltyPercentage(resourceId);
+        creator = _getOriginalCreator(resourceId);
+        royaltyFee = (price * royaltyPercentage) / 100;
+        ownerReceives = price - platformFee - royaltyFee;
+        
+        return (price, platformFee, royaltyFee, ownerReceives, creator);
+    }
+}
+
+// 访问权合约接口
+interface IAccessToken {
+    enum AccessType { Read, Write, Full }
+    
+    function mintAccessToken(
+        uint256 resourceId,
+        AccessType accessType,
+        uint256 duration,
+        uint256 maxUses
+    ) external payable returns (uint256);
+    
+    function getResourceAccessConfig(uint256 resourceId) external view returns (
+        uint256 maxAccessTokens,
+        uint256 currentAccessTokens,
+        uint256 price,
+        bool isActive
+    );
+    
+    function totalSupply() external view returns (uint256);
 } 

@@ -3,9 +3,20 @@ import { useParams } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { NFTService } from '../services/nftApi';
 import { ethers } from 'ethers';
+import { blockchainConfig } from '../config/blockchain';
 
 interface ResourceViewerProps {
   resourceId: string;
+}
+
+interface AccessToken {
+  tokenId: string;
+  resourceId: string;
+  accessType: string;
+  expiryTime: Date;
+  maxUses: number;
+  usedCount: number;
+  isActive: boolean;
 }
 
 const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourceId }) => {
@@ -17,14 +28,31 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isPurchased, setIsPurchased] = useState(false);
   const [purchaseBreakdown, setPurchaseBreakdown] = useState<any>(null);
   const [showBreakdown, setShowBreakdown] = useState(true);
   const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessToken, setAccessToken] = useState<AccessToken | null>(null);
+  const [isBuyingAccess, setIsBuyingAccess] = useState(false);
+  const [accessDuration, setAccessDuration] = useState(30);
+  const [maxUses, setMaxUses] = useState(10);
+  
+  // 添加访问权配置相关状态
+  const [accessConfig, setAccessConfig] = useState<any>(null);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const [configMaxTokens, setConfigMaxTokens] = useState(100);
+  const [configPrice, setConfigPrice] = useState("0.01");
+  const [configActive, setConfigActive] = useState(true);
+  const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
 
   useEffect(() => {
     if (actualResourceId) {
       fetchResourceDetails();
+      checkAccess();
+      fetchAccessConfig(); // 添加获取访问权配置
     } else {
       setError('资源ID无效');
       setIsLoading(false);
@@ -45,13 +73,16 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       try {
         const metadata = await NFTService.getResourceMetadata(actualResourceId);
         // 检查当前用户是否是所有者或已购买
-        const isOwner = metadata.currentOwner && address && 
-                       metadata.currentOwner.toLowerCase() === address.toLowerCase();
+        const isOwnerCheck = metadata.currentOwner && address && 
+                     metadata.currentOwner.toLowerCase() === address.toLowerCase();
         const isCreator = metadata.creator && address &&
-                       metadata.creator.toLowerCase() === address.toLowerCase();
+                     metadata.creator.toLowerCase() === address.toLowerCase();
+        
+        // 设置所有者状态
+        setIsOwner(!!(isOwnerCheck || isCreator));
         
         // 检查是否已购买(所有者或创建者默认已拥有)
-        if (isOwner || isCreator) {
+        if (isOwnerCheck || isCreator) {
           setIsPurchased(true);
         } else {
           // 这里可以添加检查用户是否已购买的接口调用
@@ -204,6 +235,164 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
     }
   };
 
+  const checkAccess = async () => {
+    try {
+      const response = await NFTService.checkAccess(actualResourceId);
+      setHasAccess(response.hasAccess);
+      if (response.accessToken) {
+        setAccessToken(response.accessToken);
+      }
+    } catch (error) {
+      console.error('检查访问权限失败:', error);
+    }
+  };
+
+  const handleBuyAccess = async () => {
+    console.log('[ResourceViewer] handleBuyAccess: 开始购买资源', actualResourceId, '的访问权');
+    console.log(`[ResourceViewer] handleBuyAccess: 参数 - accessDuration=${accessDuration}, maxUses=${maxUses}, 用户=${address}`);
+    
+    if (!address) {
+      setError('请先连接钱包');
+      return;
+    }
+
+    if (!actualResourceId) {
+      setError('资源ID无效');
+      return;
+    }
+
+    setIsBuyingAccess(true);
+    setError(null);
+    
+    try {
+      // 检查访问权配置是否存在
+      const accessConfig = await NFTService.getAccessConfig(actualResourceId);
+      console.log('[ResourceViewer] handleBuyAccess: 获取到访问权配置', accessConfig);
+      
+      if (accessConfig.error) {
+        setError('无法获取访问权配置：' + accessConfig.message);
+        return;
+      }
+      
+      if (!accessConfig.price || accessConfig.price === "0" || !accessConfig.isActive) {
+        setError('该资源尚未设置访问权价格或未激活访问权功能');
+        return;
+      }
+
+      // 购买访问权
+      const result = await NFTService.buyAccessToken(
+        actualResourceId,
+        accessDuration,
+        maxUses
+      );
+      console.log('[ResourceViewer] handleBuyAccess: 购买访问权结果:', result);
+
+      if (result.success) {
+        setSuccess(`已成功购买访问权！访问权ID: ${result.data.accessTokenId}`);
+        // 刷新访问状态
+        checkAccess();
+      } else {
+        // 提取错误详情
+        let errorMsg = result.message || '购买访问权失败';
+        
+        // 根据错误类型提供更具体的反馈
+        if (result.errorDetails) {
+          console.error('[ResourceViewer] handleBuyAccess: 错误详情:', result.errorDetails);
+          
+          if (result.message && result.message.includes('insufficient funds')) {
+            errorMsg = '您的账户余额不足以支付访问权价格和Gas费用';
+          } else if (result.message && result.message.includes('gas')) {
+            errorMsg = '交易所需Gas费用过高，请尝试增加Gas限制或简化交易';
+          } else if (result.message && result.message.includes('revert')) {
+            errorMsg = '合约执行失败：可能是资金不足或其他条件不满足';
+          }
+        }
+        
+        setError(errorMsg);
+      }
+    } catch (error: any) {
+      console.error('[ResourceViewer] handleBuyAccess: 购买访问权失败:', error);
+      let errorMsg = '购买访问权失败';
+      
+      if (error.message) {
+        if (error.message.includes('insufficient funds')) {
+          errorMsg = '您的账户余额不足以支付访问权价格和Gas费用';
+        } else if (error.message.includes('gas')) {
+          errorMsg = '交易所需Gas费用过高，请尝试增加Gas限制或简化交易';
+        } else if (error.message.includes('revert')) {
+          errorMsg = '合约执行失败：可能是资金不足或其他条件不满足';
+        } else {
+          errorMsg = error.message;
+        }
+      }
+      
+      setError(errorMsg);
+    } finally {
+      setIsBuyingAccess(false);
+    }
+  };
+
+  const fetchAccessConfig = async () => {
+    if (!actualResourceId) return;
+    
+    try {
+      setIsLoadingConfig(true);
+      console.log(`[ResourceViewer] fetchAccessConfig: 获取资源 ${actualResourceId} 的访问权配置`);
+      
+      const config = await NFTService.getAccessConfig(actualResourceId);
+      console.log(`[ResourceViewer] fetchAccessConfig: 获取到配置:`, config);
+      
+      setAccessConfig(config);
+      
+      // 如果有配置，更新表单值
+      if (config && !config.error) {
+        setConfigMaxTokens(Number(config.maxAccessTokens) || 100);
+        setConfigPrice(ethers.utils.formatEther(config.price || "10000000000000000"));
+        setConfigActive(!!config.isActive);
+      }
+    } catch (error) {
+      console.error('[ResourceViewer] fetchAccessConfig: 获取访问权配置失败:', error);
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  };
+
+  // 更新访问权配置
+  const handleUpdateAccessConfig = async () => {
+    if (!isConnected) {
+      alert('请先连接钱包');
+      return;
+    }
+    
+    try {
+      setIsUpdatingConfig(true);
+      console.log(`[ResourceViewer] handleUpdateAccessConfig: 更新资源 ${actualResourceId} 的访问权配置`);
+      console.log(`[ResourceViewer] handleUpdateAccessConfig: 参数 - maxTokens=${configMaxTokens}, price=${configPrice}, active=${configActive}`);
+      
+      // 使用直接调用合约的方式
+      const result = await NFTService.setAccessConfigDirect(
+        actualResourceId,
+        configMaxTokens,
+        configPrice,
+        configActive
+      );
+      
+      console.log(`[ResourceViewer] handleUpdateAccessConfig: 更新结果:`, result);
+      
+      if (result.success) {
+        alert('访问权配置更新成功！');
+        fetchAccessConfig(); // 重新获取配置
+      } else {
+        throw new Error(result.message || '更新失败');
+      }
+    } catch (error: any) {
+      console.error('[ResourceViewer] handleUpdateAccessConfig: 更新访问权配置失败:', error);
+      alert(`更新访问权配置失败: ${error.message || '未知错误'}`);
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
@@ -217,6 +406,24 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       <div className="bg-white rounded-lg shadow-lg p-6 text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">出错了</h2>
         <p className="text-gray-600">{error}</p>
+      </div>
+    );
+  }
+
+  if (success) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6 text-center">
+        <h2 className="text-2xl font-bold text-green-600 mb-4">操作成功</h2>
+        <p className="text-gray-600">{success}</p>
+        <button 
+          onClick={() => {
+            setSuccess(null);
+            fetchResourceDetails();
+            checkAccess();
+          }} 
+          className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+          返回资源页面
+        </button>
       </div>
     );
   }
@@ -238,6 +445,117 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
           <h1 className="text-3xl font-bold text-gray-900 mb-2">{resource.title}</h1>
           <p className="text-gray-600">作者：{resource.authors}</p>
         </div>
+
+        {/* 访问权配置区域 - 仅对资源所有者显示 */}
+        {isOwner && (
+          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+            <h3 className="text-lg font-semibold mb-4">访问权配置管理</h3>
+            
+            {isLoadingConfig ? (
+              <div className="flex justify-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+              </div>
+            ) :
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">最大访问权数量</label>
+                    <input
+                      type="number"
+                      value={configMaxTokens}
+                      onChange={(e) => setConfigMaxTokens(Number(e.target.value))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                      min="1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">访问权价格 (ETH)</label>
+                    <input
+                      type="text"
+                      value={configPrice}
+                      onChange={(e) => setConfigPrice(e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={configActive}
+                      onChange={(e) => setConfigActive(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 rounded"
+                    />
+                    <span className="ml-2">允许购买访问权</span>
+                  </label>
+                </div>
+                <button
+                  onClick={handleUpdateAccessConfig}
+                  disabled={isUpdatingConfig}
+                  className="w-full bg-yellow-600 text-white py-2 px-4 rounded-md hover:bg-yellow-700"
+                >
+                  {isUpdatingConfig ? '更新中...' : '更新访问权配置'}
+                </button>
+                <p className="text-xs text-gray-500">
+                  * 设置访问权配置后，其他用户可以购买临时访问权，而不必购买完整的NFT
+                </p>
+                {accessConfig && (
+                  <div className="text-sm text-gray-600 mt-2">
+                    <p>当前访问权状态: {accessConfig.isActive ? '已激活' : '未激活'}</p>
+                    <p>价格: {accessConfig.price ? ethers.utils.formatEther(accessConfig.price) : '0'} ETH</p>
+                    <p>已售出: {accessConfig.currentAccessTokens || 0} / {accessConfig.maxAccessTokens || 0}</p>
+                  </div>
+                )}
+              </div>
+            }
+          </div>
+        )}
+
+        {/* 访问权状态 */}
+        {!isPurchased && !hasAccess && (
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold mb-4">购买访问权</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">访问时长（天）</label>
+                <input
+                  type="number"
+                  value={accessDuration}
+                  onChange={(e) => setAccessDuration(Number(e.target.value))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">最大使用次数</label>
+                <input
+                  type="number"
+                  value={maxUses}
+                  onChange={(e) => setMaxUses(Number(e.target.value))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                />
+              </div>
+              <button
+                onClick={handleBuyAccess}
+                disabled={isBuyingAccess}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+              >
+                {isBuyingAccess ? '处理中...' : '购买访问权'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 访问权信息 */}
+        {accessToken && (
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold mb-2">访问权信息</h3>
+            <div className="space-y-2">
+              <p>类型：{accessToken.accessType}</p>
+              <p>剩余使用次数：{accessToken.maxUses - accessToken.usedCount}</p>
+              <p>过期时间：{new Date(accessToken.expiryTime).toLocaleDateString()}</p>
+            </div>
+          </div>
+        )}
 
         {/* 元数据 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

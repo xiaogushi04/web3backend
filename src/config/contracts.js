@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 console.log('合约配置检查:');
 console.log('环境变量 MARKET_CONTRACT_ADDRESS:', process.env.MARKET_CONTRACT_ADDRESS);
 console.log('环境变量 ACADEMIC_NFT_CONTRACT_ADDRESS:', process.env.ACADEMIC_NFT_CONTRACT_ADDRESS);
+console.log('环境变量 ACCESS_TOKEN_ADDRESS:', process.env.ACCESS_TOKEN_ADDRESS);
 
 // 读取 ABI 文件
 const readABI = (abiPath) => {
@@ -39,6 +40,11 @@ const contracts = {
     address: process.env.MARKET_CONTRACT_ADDRESS,
     abi: readABI('artifacts/src/contracts/Market.sol/AcademicMarket.json'),
     name: 'AcademicMarket'
+  },
+  accessToken: {
+    address: process.env.ACCESS_TOKEN_ADDRESS || '0xD92A7b96c01289e842a6d4f0197121979e9ae4b7', // 使用与前端相同的地址作为默认值
+    abi: readABI('artifacts/src/contracts/AccessToken.sol/AccessToken.json'),
+    name: 'AccessToken'
   }
 };
 

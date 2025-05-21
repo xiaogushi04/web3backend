@@ -37,6 +37,16 @@ interface NFTMetadata {
   royaltyPercentage?: number;
 }
 
+interface AccessToken {
+  tokenId: string;
+  resourceId: string;
+  accessType: string;
+  expiryTime: Date;
+  maxUses: number;
+  usedCount: number;
+  isActive: boolean;
+}
+
 interface NFTListResponse {
   total: number;
   resources: NFTMetadata[];
@@ -441,6 +451,463 @@ export const NFTService = {
         creator: ethers.constants.AddressZero,
         platformFeePercentage: 2,
         royaltyPercentage: 5
+      };
+    }
+  },
+
+  // 检查访问权限
+  checkAccess: async (resourceId: string) => {
+    try {
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const address = accounts[0];
+
+      console.log('[NFTService] checkAccess: 检查资源访问权限', {
+        resourceId,
+        address
+      });
+
+      const response = await api.get<{
+        success: boolean,
+        message?: string,
+        data: {
+          hasAccess: boolean;
+          accessToken?: {
+            tokenId: string;
+            resourceId: string;
+            accessType: string;
+            expiryTime: Date;
+            maxUses: number;
+            usedCount: number;
+            isActive: boolean;
+          }
+        }
+      }>(`/api/contracts/access/check/${resourceId}?address=${address}`);
+
+      console.log('[NFTService] checkAccess: 服务器响应', response.data);
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || '检查访问权限失败');
+      }
+
+      // 确保返回正确的数据格式，即使服务器返回的数据不完整
+      return {
+        hasAccess: response.data.data?.hasAccess || false,
+        accessToken: response.data.data?.accessToken || null
+      };
+    } catch (error) {
+      console.error('检查访问权限失败:', error);
+      // 返回默认值，避免前端崩溃
+      return {
+        hasAccess: false,
+        accessToken: null
+      };
+    }
+  },
+
+  // 购买访问权
+  buyAccessToken: async (resourceId: string, duration: number, maxUses: number): Promise<{
+    success: boolean;
+    data: { accessTokenId: string };
+    message?: string;
+    errorDetails?: {
+      code?: number;
+      name?: string;
+      response?: any;
+      original?: string;
+      type?: string;
+    };
+  }> => {
+    try {
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      console.log('[NFTService] buyAccessToken: 开始购买访问权流程');
+      console.log(`[NFTService] buyAccessToken: 参数 - resourceId=${resourceId}, duration=${duration}, maxUses=${maxUses}`);
+
+      // 获取当前连接的账户地址
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+      console.log(`[NFTService] buyAccessToken: 用户钱包地址: ${userAddress}`);
+
+      // 获取购买费用明细
+      const accessConfig = await NFTService.getAccessConfig(resourceId);
+      console.log('[NFTService] buyAccessToken: 访问权配置:', accessConfig);
+
+      if (!accessConfig.price || accessConfig.price === "0" || !accessConfig.isActive) {
+        throw new Error('该资源尚未设置访问权价格或未激活访问权功能');
+      }
+
+      // 检查用户余额
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const balance = await provider.getBalance(userAddress);
+      const price = ethers.BigNumber.from(accessConfig.price);
+      
+      console.log(`[NFTService] buyAccessToken: 用户余额: ${ethers.utils.formatEther(balance)} ETH`);
+      console.log(`[NFTService] buyAccessToken: 访问权价格: ${ethers.utils.formatEther(price)} ETH`);
+      
+      if (balance.lt(price)) {
+        throw new Error(`余额不足，需要 ${ethers.utils.formatEther(price)} ETH，当前余额 ${ethers.utils.formatEther(balance)} ETH`);
+      }
+
+      // 创建合约实例
+      const signer = provider.getSigner();
+      const marketContract = new ethers.Contract(
+        blockchainConfig.contracts.market.address,
+        blockchainConfig.contracts.market.abi,
+        signer
+      );
+      
+      const accessTokenContract = new ethers.Contract(
+        blockchainConfig.contracts.accessToken.address,
+        blockchainConfig.contracts.accessToken.abi,
+        signer
+      );
+
+      console.log(`[NFTService] buyAccessToken: Market合约地址: ${marketContract.address}`);
+      console.log(`[NFTService] buyAccessToken: AccessToken合约地址: ${accessTokenContract.address}`);
+
+      // 检查AccessToken合约的所有者
+      const accessTokenOwner = await accessTokenContract.owner();
+      console.log(`[NFTService] buyAccessToken: AccessToken合约所有者: ${accessTokenOwner}`);
+      console.log(`[NFTService] buyAccessToken: 是否与Market合约地址匹配: ${accessTokenOwner.toLowerCase() === marketContract.address.toLowerCase()}`);
+
+      // 估算gas
+      try {
+        const gasEstimate = await marketContract.estimateGas.buyAccessToken(
+          resourceId,
+          duration,
+          maxUses,
+          { value: price }
+        );
+        console.log(`[NFTService] buyAccessToken: 预估gas: ${gasEstimate.toString()}`);
+      } catch (gasError: any) {
+        console.error('[NFTService] buyAccessToken: Gas预估失败:', gasError);
+        if (gasError.data) {
+          console.error('[NFTService] buyAccessToken: Gas预估失败详情:', {
+            error: gasError.error,
+            errorData: gasError.data,
+            errorArgs: gasError.args,
+            errorCode: gasError.code,
+            errorMessage: gasError.message
+          });
+        }
+      }
+
+      // 直接调用合约的buyAccessToken方法
+      console.log(`[NFTService] buyAccessToken: 调用合约方法，参数:`, {
+        resourceId,
+        duration,
+        maxUses,
+        value: price.toString()
+      });
+
+      const tx = await marketContract.buyAccessToken(
+        resourceId,
+        duration,
+        maxUses,
+        { 
+          value: price,
+          gasLimit: 500000 // 使用固定的gas限制
+        }
+      );
+
+      console.log('[NFTService] buyAccessToken: 交易已发送:', tx.hash);
+      
+      // 等待交易确认
+      const receipt = await tx.wait();
+      console.log('[NFTService] buyAccessToken: 交易已确认:', receipt);
+
+      // 从事件中获取accessTokenId
+      let accessTokenId = null;
+      if (receipt.events) {
+        const accessTokenSoldEvent = receipt.events.find((e: { event: string }) => e.event === 'AccessTokenSold');
+        if (accessTokenSoldEvent && accessTokenSoldEvent.args) {
+          accessTokenId = accessTokenSoldEvent.args.accessTokenId.toString();
+          console.log(`[NFTService] buyAccessToken: AccessTokenId from event: ${accessTokenId}`);
+        }
+      }
+
+      // 调用后端同步接口
+      try {
+        console.log('开始同步索引器...');
+        await api.post('/api/indexer/sync', {
+          fromBlock: receipt.blockNumber,
+          toBlock: receipt.blockNumber
+        });
+        console.log('索引器同步完成');
+      } catch (syncError) {
+        console.error('索引器同步失败:', syncError);
+        // 不抛出错误，因为购买已经成功
+      }
+
+      return {
+        success: true,
+        data: { accessTokenId: accessTokenId || '' },
+        message: '访问权购买成功'
+      };
+
+    } catch (error: any) {
+      console.error('[NFTService] buyAccessToken: 购买失败:', error);
+      
+      // 提供更详细的错误信息
+      let errorMessage = '购买访问权失败';
+      let errorDetails = {
+        code: error.code,
+        name: error.name,
+        response: error.response?.data,
+        original: error.message,
+        type: error.type
+      };
+      
+      if (error.code === 4001) {
+        errorMessage = '用户拒绝了交易';
+      } else if (error.code === -32603) {
+        errorMessage = '合约执行失败，请检查：\n1. 资源是否存在\n2. 访问权是否已激活\n3. 支付金额是否正确';
+        
+        // 尝试从error对象中获取更多信息
+        if (error.data) {
+          console.error('[NFTService] buyAccessToken: 合约错误数据:', error.data);
+          errorDetails.response = error.data;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      return {
+        success: false,
+        data: { accessTokenId: '' },
+        message: errorMessage,
+        errorDetails
+      };
+    }
+  },
+
+  // 使用访问权
+  activateAccessToken: async (accessTokenId: string) => {
+    try {
+      const response = await api.post<{success: boolean}>(
+        '/api/contracts/access/use',
+        { accessTokenId }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('使用访问权失败:', error);
+      throw error;
+    }
+  },
+
+  // 销毁访问权
+  burnAccessToken: async (accessTokenId: string) => {
+    try {
+      const response = await api.post<{success: boolean}>(
+        '/api/contracts/access/burn',
+        { accessTokenId }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('销毁访问权失败:', error);
+      throw error;
+    }
+  },
+
+  // 获取用户的访问权列表
+  getUserAccessTokens: async (address: string) => {
+    try {
+      const response = await api.get<{success: boolean, data: AccessToken[]}>(
+        `/api/contracts/access-tokens/${address}`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error('获取访问权列表失败:', error);
+      throw error;
+    }
+  },
+
+  // 获取资源的访问权配置
+  getAccessConfig: async (resourceId: string) => {
+    try {
+      console.log('[NFTService] getAccessConfig: 开始获取访问权配置');
+      console.log(`[NFTService] getAccessConfig: 参数 - resourceId=${resourceId}`);
+      
+      const response = await api.get<{success: boolean, data: any}>(
+        `/api/contracts/access/config/${resourceId}`
+      );
+      console.log(`[NFTService] getAccessConfig: 获取到配置:`, response.data);
+      return response.data.data;
+    } catch (error: any) {
+      console.error('[NFTService] getAccessConfig: 获取访问权配置失败:', error);
+      return { error: true, message: error.message || '获取访问权配置失败' };
+    }
+  },
+
+  // 设置资源的访问权配置 (直接调用合约)
+  setAccessConfigDirect: async (resourceId: string, maxTokens: number, price: string, isActive: boolean): Promise<{
+    success: boolean;
+    message?: string;
+  }> => {
+    try {
+      console.log('[NFTService] setAccessConfigDirect: 开始设置访问权配置');
+      console.log(`[NFTService] setAccessConfigDirect: 参数 - resourceId=${resourceId}, maxTokens=${maxTokens}, price=${price}, isActive=${isActive}`);
+      
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      // 获取当前连接的账户地址
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+      console.log(`[NFTService] setAccessConfigDirect: 用户钱包地址: ${userAddress}`);
+
+      // 创建 provider 和 signer
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      
+      // 创建 AccessToken 合约实例
+      const accessTokenContract = new ethers.Contract(
+        blockchainConfig.contracts.accessToken.address,
+        blockchainConfig.contracts.accessToken.abi,
+        signer
+      );
+      
+      // 创建 AcademicNFT 合约实例
+      const academicNFTContract = new ethers.Contract(
+        blockchainConfig.contracts.academicNFT.address,
+        blockchainConfig.contracts.academicNFT.abi,
+        signer
+      );
+      
+      // 检查资源所有权
+      try {
+        const resourceOwner = await academicNFTContract.ownerOf(resourceId);
+        console.log(`[NFTService] setAccessConfigDirect: 资源所有者: ${resourceOwner}`);
+        
+        if (resourceOwner.toLowerCase() !== userAddress.toLowerCase()) {
+          console.warn(`[NFTService] setAccessConfigDirect: 用户 ${userAddress} 不是资源 ${resourceId} 的所有者`);
+          return { 
+            success: false, 
+            message: '您不是该资源的所有者，无法设置访问权配置。'
+          };
+        }
+      } catch (ownerError) {
+        console.error('[NFTService] setAccessConfigDirect: 检查资源所有权失败:', ownerError);
+        return { 
+          success: false, 
+          message: '无法验证资源所有权，请确保资源ID正确。'
+        };
+      }
+
+      // 将价格转换为 wei
+      const priceInWei = ethers.utils.parseEther(price);
+      console.log(`[NFTService] setAccessConfigDirect: 价格转换: ${price} ETH = ${priceInWei.toString()} wei`);
+
+      // 调用合约方法
+      console.log(`[NFTService] setAccessConfigDirect: 调用合约方法 setResourceAccessConfig...`);
+      const tx = await accessTokenContract.setResourceAccessConfig(
+        resourceId,
+        maxTokens,
+        priceInWei,
+        isActive
+      );
+      
+      console.log(`[NFTService] setAccessConfigDirect: 交易已发送, hash: ${tx.hash}`);
+      
+      // 等待交易确认
+      const receipt = await tx.wait();
+      console.log(`[NFTService] setAccessConfigDirect: 交易已确认, hash: ${receipt.transactionHash}, block: ${receipt.blockNumber}`);
+      
+      return {
+        success: true,
+        message: '访问权配置已成功更新'
+      };
+    } catch (error: any) {
+      console.error('[NFTService] setAccessConfigDirect: 设置访问权配置失败:', error);
+      let errorMessage = '设置访问权配置失败';
+      
+      if (error.code === 4001) {
+        errorMessage = '用户拒绝了交易';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
+    }
+  },
+
+  // 设置资源的访问权配置
+  setAccessConfig: async (resourceId: string, maxTokens: number, price: string, isActive: boolean): Promise<{
+    success: boolean;
+    message?: string;
+  }> => {
+    try {
+      console.log('[NFTService] setAccessConfig: 开始设置访问权配置');
+      console.log(`[NFTService] setAccessConfig: 参数 - resourceId=${resourceId}, maxTokens=${maxTokens}, price=${price}, isActive=${isActive}`);
+      
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      // 获取当前连接的账户地址
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+      console.log(`[NFTService] setAccessConfig: 用户钱包地址: ${userAddress}`);
+
+      // 构建签名消息
+      const message = `Set Access Config for resource ${resourceId}`;
+      console.log(`[NFTService] setAccessConfig: 准备签名的消息: '${message}'`);
+
+      // 创建 provider 和 signer
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+
+      // 请求签名
+      console.log(`[NFTService] setAccessConfig: 请求用户 ${userAddress} 签名消息...`);
+      const signature = await signer.signMessage(message);
+      console.log(`[NFTService] setAccessConfig: 获取到签名: ${signature.slice(0, 10)}...${signature.slice(-8)}`);
+
+      // 发送请求到后端
+      console.log(`[NFTService] setAccessConfig: 正在发送请求到后端...`);
+      const response = await api.post<{success: boolean, message?: string}>(
+        '/api/contracts/access/config',
+        { 
+          resourceId, 
+          maxTokens,
+          price,
+          isActive,
+          address: userAddress,
+          message,
+        },
+        {
+          headers: {
+            'x-signature': signature
+          }
+        }
+      );
+
+      console.log(`[NFTService] setAccessConfig: 收到后端响应:`, response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('[NFTService] setAccessConfig: 设置访问权配置失败:', error);
+      let errorMessage = '设置访问权配置失败';
+      
+      if (error.code === 4001) {
+        errorMessage = '用户拒绝了签名';
+      } else if (error.response && error.response.data && error.response.data.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
       };
     }
   }

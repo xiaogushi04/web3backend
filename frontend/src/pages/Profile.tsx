@@ -17,14 +17,26 @@ declare global {
   }
 }
 
+interface AccessToken {
+  tokenId: string;
+  resourceId: string;
+  accessType: string;
+  expiryTime: Date;
+  maxUses: number;
+  usedCount: number;
+  isActive: boolean;
+}
+
 const Profile: React.FC = () => {
   const { address } = useAccount();
   const [userResources, setUserResources] = useState<any[]>([]);
+  const [accessTokens, setAccessTokens] = useState<AccessToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [listingTokenId, setListingTokenId] = useState<string | null>(null);
   const [listingPrice, setListingPrice] = useState<string>('0.1');
   const [isListing, setIsListing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'resources' | 'access'>('resources');
   const [userStats, setUserStats] = useState({
     uploads: 0,
     transfers: 0,
@@ -58,14 +70,31 @@ const Profile: React.FC = () => {
     }
   }, [address]);
 
+  const fetchAccessTokens = useCallback(async () => {
+    try {
+      setLoading(true);
+      const tokens = await NFTService.getUserAccessTokens(address as string);
+      setAccessTokens(tokens);
+      setError(null);
+    } catch (err: any) {
+      console.error('获取访问权列表失败:', err);
+      setError('获取访问权列表失败，请稍后再试');
+    } finally {
+      setLoading(false);
+    }
+  }, [address]);
+
   useEffect(() => {
-    // 只有当钱包连接时才获取数据
     if (address) {
-      fetchUserResources();
+      if (activeTab === 'resources') {
+        fetchUserResources();
+      } else {
+        fetchAccessTokens();
+      }
     } else {
       setLoading(false);
     }
-  }, [address, fetchUserResources]);
+  }, [address, activeTab, fetchUserResources, fetchAccessTokens]);
 
   const calculateUserStats = (resources: any[], transactionData: any) => {
     // 默认值
@@ -158,6 +187,34 @@ const Profile: React.FC = () => {
     alert('下架功能暂未实现');
   };
 
+  const handleUseAccessToken = async (tokenId: string) => {
+    try {
+      const response = await NFTService.activateAccessToken(tokenId);
+      if (response.success) {
+        await fetchAccessTokens(); // 刷新列表
+      } else {
+        throw new Error('使用访问权失败');
+      }
+    } catch (error) {
+      console.error('使用访问权失败:', error);
+      alert('使用访问权失败，请稍后再试');
+    }
+  };
+
+  const handleBurnAccessToken = async (tokenId: string) => {
+    try {
+      const response = await NFTService.burnAccessToken(tokenId);
+      if (response.success) {
+        await fetchAccessTokens(); // 刷新列表
+      } else {
+        throw new Error('销毁访问权失败');
+      }
+    } catch (error) {
+      console.error('销毁访问权失败:', error);
+      alert('销毁访问权失败，请稍后再试');
+    }
+  };
+
   if (!address) {
     return (
       <div className="bg-white rounded-lg shadow-lg p-6 text-center">
@@ -168,171 +225,187 @@ const Profile: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8">
-      {/* 用户信息 */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex items-center space-x-4">
-          <div className="h-16 w-16 bg-gray-200 rounded-full flex items-center justify-center">
-            <span className="text-2xl text-gray-500">
-              {address.slice(0, 2).toUpperCase()}
-            </span>
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {address.slice(0, 6)}...{address.slice(-4)}
-            </h2>
-            <p className="text-gray-500">学术贡献者</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 统计数据 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">拥有资源</h3>
-          <p className="text-3xl font-bold text-gray-900">{userStats.uploads}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">交易次数</h3>
-          <p className="text-3xl font-bold text-gray-900">{userStats.transfers}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">引用次数</h3>
-          <p className="text-3xl font-bold text-gray-900">{userStats.references}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">总收益</h3>
-          <p className="text-3xl font-bold text-gray-900">{userStats.earnings} ETH</p>
-          <div className="mt-2 text-sm text-gray-600">
-            <p>销售收益：{userStats.sellerEarnings} ETH</p>
-            <p>版税收益：{userStats.creatorEarnings} ETH</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 我的资源 */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">我的资源</h2>
-          <Link
-            to="/upload"
-            className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all hover:scale-105"
-          >
-            上传新资源
-          </Link>
-        </div>
-        
-        {loading ? (
-          <div className="p-6 text-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-500 mx-auto"></div>
-            <p className="mt-2 text-gray-500">加载中...</p>
-          </div>
-        ) : error ? (
-          <div className="p-6 text-center">
-            <p className="text-red-500">{error}</p>
-            <button 
-              onClick={fetchUserResources}
-              className="mt-2 px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-800"
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        {/* 标签页导航 */}
+        <div className="border-b border-gray-200">
+          <nav className="flex -mb-px">
+            <button
+              onClick={() => setActiveTab('resources')}
+              className={`py-4 px-6 text-sm font-medium ${
+                activeTab === 'resources'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
             >
-              重试
+              我的资源
             </button>
-          </div>
-        ) : userResources.length === 0 ? (
-          <div className="p-6 text-center">
-            <p className="text-gray-500">您还没有拥有任何资源</p>
-            <Link
-              to="/upload"
-              className="mt-4 inline-block px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800"
+            <button
+              onClick={() => setActiveTab('access')}
+              className={`py-4 px-6 text-sm font-medium ${
+                activeTab === 'access'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
             >
-              上传您的第一个资源
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {userResources.map((resource) => (
-              <div
-                key={resource.tokenId}
-                className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-all"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      {resource.title}
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      上传时间：{new Date(resource.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Link
-                    to={`/resource/${resource.tokenId}`}
-                    className="text-sm text-gray-900 hover:text-gray-700"
+              访问权管理
+            </button>
+          </nav>
+        </div>
+
+        {/* 内容区域 */}
+        <div className="p-6">
+          {activeTab === 'resources' ? (
+            // 资源列表
+            userResources.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-gray-500">您还没有拥有任何资源</p>
+                <Link
+                  to="/upload"
+                  className="mt-4 inline-block px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800"
+                >
+                  上传您的第一个资源
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {userResources.map((resource) => (
+                  <div
+                    key={resource.tokenId}
+                    className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-all"
                   >
-                    查看详情 →
-                  </Link>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-gray-500">
-                  <div>交易次数：{resource.transfers ? resource.transfers.length - 1 : 0}</div>
-                  <div>引用次数：{resource.references ? resource.references.length : 0}</div>
-                  <div>
-                    {resource.listing && resource.listing.isActive ? (
-                      <span className="text-green-500">上架价格: {ethers.utils.formatEther(resource.listing.price)} ETH</span>
-                    ) : (
-                      <span>未上架</span>
-                    )}
-                  </div>
-                </div>
-                
-                {/* 上架/下架操作 */}
-                <div className="mt-4 border-t pt-4">
-                  {resource.listing && resource.listing.isActive ? (
-                    <button
-                      onClick={() => handleCancelListing(resource.tokenId)}
-                      className="px-3 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600 transition-all"
-                    >
-                      下架
-                    </button>
-                  ) : listingTokenId === resource.tokenId ? (
-                    <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
-                      <div className="flex-1">
-                        <input
-                          type="number"
-                          value={listingPrice}
-                          onChange={(e) => setListingPrice(e.target.value)}
-                          placeholder="输入价格 (ETH)"
-                          className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-gray-900"
-                          step="0.01"
-                          min="0"
-                        />
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          {resource.title}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          上传时间：{new Date(resource.createdAt).toLocaleDateString()}
+                        </p>
                       </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleListNFT(resource.tokenId)}
-                          disabled={isListing}
-                          className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 transition-all disabled:bg-green-300"
-                        >
-                          {isListing ? '上架中...' : '确认上架'}
-                        </button>
-                        <button
-                          onClick={() => setListingTokenId(null)}
-                          className="px-3 py-1.5 bg-gray-400 text-white rounded-md hover:bg-gray-500 transition-all"
-                        >
-                          取消
-                        </button>
+                      <Link
+                        to={`/resource/${resource.tokenId}`}
+                        className="text-sm text-gray-900 hover:text-gray-700"
+                      >
+                        查看详情 →
+                      </Link>
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-gray-500">
+                      <div>交易次数：{resource.transfers ? resource.transfers.length - 1 : 0}</div>
+                      <div>引用次数：{resource.references ? resource.references.length : 0}</div>
+                      <div>
+                        {resource.listing && resource.listing.isActive ? (
+                          <span className="text-green-500">上架价格: {ethers.utils.formatEther(resource.listing.price)} ETH</span>
+                        ) : (
+                          <span>未上架</span>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <button
-                      onClick={() => setListingTokenId(resource.tokenId)}
-                      className="px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all"
-                    >
-                      上架出售
-                    </button>
-                  )}
-                </div>
+                    
+                    {/* 上架/下架操作 */}
+                    <div className="mt-4 border-t pt-4">
+                      {resource.listing && resource.listing.isActive ? (
+                        <button
+                          onClick={() => handleCancelListing(resource.tokenId)}
+                          className="px-3 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600 transition-all"
+                        >
+                          下架
+                        </button>
+                      ) : listingTokenId === resource.tokenId ? (
+                        <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
+                          <div className="flex-1">
+                            <input
+                              type="number"
+                              value={listingPrice}
+                              onChange={(e) => setListingPrice(e.target.value)}
+                              placeholder="输入价格 (ETH)"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-gray-900"
+                              step="0.01"
+                              min="0"
+                            />
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleListNFT(resource.tokenId)}
+                              disabled={isListing}
+                              className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 transition-all disabled:bg-green-300"
+                            >
+                              {isListing ? '上架中...' : '确认上架'}
+                            </button>
+                            <button
+                              onClick={() => setListingTokenId(null)}
+                              className="px-3 py-1.5 bg-gray-400 text-white rounded-md hover:bg-gray-500 transition-all"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setListingTokenId(resource.tokenId)}
+                          className="px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all"
+                        >
+                          上架出售
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            )
+          ) : (
+            // 访问权列表
+            accessTokens.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-gray-500">您还没有任何访问权</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {accessTokens.map((token) => (
+                  <div
+                    key={token.tokenId}
+                    className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-all"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          资源ID: {token.resourceId}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          类型: {token.accessType}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          剩余使用次数: {token.maxUses - token.usedCount}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          过期时间: {new Date(token.expiryTime).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="space-x-2">
+                        {token.isActive && token.usedCount < token.maxUses && (
+                          <button
+                            onClick={() => handleUseAccessToken(token.tokenId)}
+                            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                          >
+                            使用
+                          </button>
+                        )}
+                        {token.isActive && (
+                          <button
+                            onClick={() => handleBurnAccessToken(token.tokenId)}
+                            className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                          >
+                            销毁
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
       </div>
     </div>
   );
