@@ -1,157 +1,166 @@
-# Web3 学术资源交易平台
+# Web3 学术资源访问控制系统
 
-这是一个Web3学术资源交易平台的后端服务，用于管理基于区块链的学术资源NFT。
+一个基于区块链技术的学术资源访问控制系统，通过智能合约实现资源访问权的去中心化管理。
 
-## 架构说明
+## 核心特性
 
-### 系统架构
+### 1. 访问权管理
+- 基于 ERC-721 的访问权 NFT
+- 支持访问次数限制（如：单次、多次、无限次）
+- 支持访问时间限制（如：1天、7天、30天、永久）
+- 支持访问权转让和交易
 
-本项目采用区块链事件索引器架构，主要包括以下组件：
+### 2. 资源管理
+- 资源上链与元数据管理
+- 资源所有权追踪
+- 资源引用关系管理
+- 版税分成机制
 
-1. **区块链交互服务**：负责与智能合约的直接交互，处理铸造、引用、上架、交易等链上操作
-2. **事件索引器**：监听和处理链上事件，将事件数据同步到数据库
-3. **数据库存储**：使用MongoDB存储区块链事件解析后的结构化数据
-4. **缓存服务**：使用Redis缓存频繁访问的数据，提高API响应速度
-5. **RESTful API**：为前端提供标准的RESTful接口
+### 3. 市场功能
+- 资源上架与下架
+- 资源购买
+- 访问权购买
+- 交易历史记录
 
-### 优势
+## 技术实现
 
-1. **高效查询**：避免直接查询区块链，大幅提高API响应速度
-2. **降低成本**：减少对区块链RPC的直接调用，降低基础设施成本
-3. **数据完整性**：索引器保证链上数据与数据库数据的一致性
-4. **更好的可扩展性**：数据库查询支持复杂过滤、排序和分页操作
+### 智能合约
+- `AcademicNFT.sol`: 资源 NFT 合约，继承自 ERC-721
+- `AccessToken.sol`: 访问权合约，实现访问控制逻辑
+- `Market.sol`: 市场合约，处理交易逻辑
 
-## 功能特性
+### 后端服务
+- Node.js + Express 提供 RESTful API
+- MongoDB 存储链下数据
+- IPFS 存储资源内容
+- 事件索引器同步链上数据
 
-- NFT资源铸造：发布学术资源并生成NFT证书
-- 资源引用：创建资源之间的引用关系
-- 市场交易：上架、下架和购买学术资源NFT
-- 资源列表：获取所有资源、用户资源和市场资源列表
-- 资源详情：获取单个资源的详细信息
-- 资源历史：查看资源的转移历史和引用关系
+### 前端应用
+- React + TypeScript 构建用户界面
+- ethers.js 处理区块链交互
+- wagmi + Web3Modal 实现钱包连接
 
-## 技术栈
+## 快速开始
 
-- Node.js
-- Express.js
-- MongoDB (数据存储)
-- Redis (缓存)
-- Ethers.js (区块链交互)
-- IPFS (分布式文件存储)
+### 环境要求
+- Node.js >= 16
+- MongoDB >= 4.4
+- MetaMask 钱包
 
-## 目录结构
+### 安装部署
 
-```
-src/
-├── app.js                  # 应用程序入口文件
-├── config/                 # 配置文件
-├── contracts/              # 智能合约ABI和地址
-├── middleware/             # 中间件
-├── models/                 # 数据库模型
-├── modules/                # 功能模块
-├── routes/                 # 路由定义
-├── services/               # 服务实现
-│   ├── cache.js            # 缓存服务
-│   ├── contract.service.js # 合约交互服务
-│   ├── database.js         # 数据库连接
-│   ├── indexer.service.js  # 区块链事件索引器
-│   ├── ipfs.js             # IPFS服务
-│   └── nft.service.js      # NFT数据访问服务
-├── start-indexer.js        # 独立索引器启动脚本
-└── utils/                  # 工具函数
-```
-
-## 安装与设置
-
-### 先决条件
-
-- Node.js v16或更高版本
-- MongoDB服务器
-- Redis服务器
-- 以太坊兼容的区块链节点（如Sepolia测试网）
-
-### 安装步骤
-
-1. 克隆仓库：
+1. 克隆项目
 ```bash
 git clone <repository_url>
 cd web3backend
 ```
 
-2. 安装依赖：
+2. 安装依赖
 ```bash
+# 后端
+cd backend
+npm install
+
+# 前端
+cd frontend
 npm install
 ```
 
-3. 设置环境变量（创建.env文件）：
-```env
-# 服务器配置
-PORT=3000
-NODE_ENV=development
-
-# 数据库配置
-MONGODB_URI=mongodb://localhost:27017/web3docmarket
-
-# Redis配置
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_URL=redis://localhost:6379
-
-# 区块链配置
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
-PRIVATE_KEY=your_private_key
-ACADEMIC_NFT_CONTRACT_ADDRESS=0x12345...
-CHAIN_ID=11155111
-DEPLOYMENT_BLOCK=3000000
-
-# IPFS配置
-IPFS_HOST=localhost
-IPFS_PORT=5001
-IPFS_PROTOCOL=http
-
-# 索引器配置
-INDEXER_ENABLED=true
-INDEXER_SYNC_INTERVAL=60000
-```
-
-4. 启动服务：
+3. 配置环境变量
 ```bash
-npm start
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑 .env 文件，配置以下内容：
+# - 区块链网络配置
+# - 合约地址
+# - 数据库连接
+# - IPFS 配置
 ```
 
-### 单独运行索引器
-
-如果需要单独运行索引器（例如在单独的进程或服务器上），可以使用：
+4. 启动服务
 ```bash
-node src/start-indexer.js
+# 后端
+cd backend
+npm run dev
+
+# 前端
+cd frontend
+npm run dev
 ```
 
-## API 文档
+## 使用指南
 
-### 资源管理
+### 资源所有者
 
-- `POST /api/contracts/mint-with-file` - 上传文件并铸造NFT
-- `POST /api/contracts/mint` - 铸造NFT（IPFS哈希已存在）
-- `GET /api/contracts/resource/:tokenId` - 获取资源元数据
-- `GET /api/contracts/resources` - 获取所有资源列表
-- `GET /api/contracts/user/:address/resources` - 获取用户的资源列表
+1. 上传资源
+   - 连接 MetaMask 钱包
+   - 上传资源文件
+   - 设置访问权限和价格
 
-### 引用管理
+2. 管理访问权
+   - 查看访问记录
+   - 调整访问权限
+   - 管理版税设置
 
-- `POST /api/contracts/reference` - 创建引用关系
-- `GET /api/contracts/resource/:tokenId/references` - 获取资源的引用
+### 资源访问者
 
-### 市场功能
+1. 购买访问权
+   - 浏览资源列表
+   - 选择访问权类型
+   - 完成支付
 
-- `POST /api/contracts/list` - 上架NFT
-- `POST /api/contracts/buy` - 购买NFT
-- `GET /api/contracts/listing/:tokenId` - 获取上架详情
-- `GET /api/contracts/market` - 获取市场列表
+2. 使用资源
+   - 查看访问权状态
+   - 访问资源内容
+   - 管理访问权
 
-### IPFS文件管理
+## 开发指南
 
-- `POST /api/ipfs/file` - 上传文件到IPFS
+### 项目结构
+```
+├── backend/                # 后端服务
+│   ├── src/
+│   │   ├── config/        # 配置文件
+│   │   ├── contracts/     # 合约相关
+│   │   ├── routes/        # API 路由
+│   │   ├── services/      # 业务服务
+│   │   └── utils/         # 工具函数
+│   └── contracts/         # 智能合约
+├── frontend/              # 前端应用
+│   ├── src/
+│   │   ├── components/    # 组件
+│   │   ├── config/        # 配置文件
+│   │   ├── services/      # API 服务
+│   │   └── utils/         # 工具函数
+└── docs/                  # 文档
+```
+
+### 开发流程
+
+1. 合约开发
+   - 编写智能合约
+   - 单元测试
+   - 部署到测试网
+
+2. 后端开发
+   - 实现 API 接口
+   - 编写业务逻辑
+   - 集成测试
+
+3. 前端开发
+   - 实现用户界面
+   - 集成钱包功能
+   - 对接后端 API
+
+## 贡献指南
+
+1. Fork 项目
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 创建 Pull Request
 
 ## 许可证
 
-[MIT](LICENSE) 
+MIT License - 详见 [LICENSE](LICENSE) 文件 
