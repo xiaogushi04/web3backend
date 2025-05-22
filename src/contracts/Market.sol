@@ -148,7 +148,7 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
         // 转移平台费用
         (bool feeSuccess, ) = feeRecipient.call{value: platformFee}("");
         require(feeSuccess, "Fee transfer failed");
-        
+
         // 如果有创建者且版税大于0，转移版税
         if (creator != address(0) && royaltyFee > 0) {
             // 确保创建者不是卖家自己，如果是，金额合并到卖家收入中

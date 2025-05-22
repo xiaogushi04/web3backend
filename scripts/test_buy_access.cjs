@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 
 async function main() {
   try {
-    // 替换为你的合约地址
+  // 替换为你的合约地址
     const marketAddress = "0x59B52cB07cEF1b301Ac74873348541f0C1EA95Df";
     const accessTokenAddress = "0xF43cAb87E109bCEeB7271148e6449ed59d597292";
 
@@ -12,14 +12,14 @@ async function main() {
     const buyer = signers[3]; // 使用第二个账户（index 1）
     console.log("使用账户:", buyer.address);
 
-    // 获取Market合约实例
-    const market = await ethers.getContractAt("AcademicMarket", marketAddress);
+  // 获取Market合约实例
+  const market = await ethers.getContractAt("AcademicMarket", marketAddress);
     const accessToken = await ethers.getContractAt("AccessToken", accessTokenAddress);
 
-    // 参数
-    const resourceId = 1;
-    const duration = 30;
-    const maxUses = 10;
+  // 参数
+  const resourceId = 1;
+  const duration = 30;
+  const maxUses = 10;
 
     // 获取实际价格
     const config = await accessToken.getResourceAccessConfig(resourceId);
@@ -31,7 +31,7 @@ async function main() {
     console.log("价格:", ethers.formatEther(price), "ETH");
     console.log("价格(wei):", price.toString());
     console.log("是否激活:", config[3]);
-    
+
     // 检查买家余额
     const buyerBalance = await ethers.provider.getBalance(buyer.address);
     console.log("\n买家信息:");

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { NFTService } from '../services/nftApi';
 import { ethers } from 'ethers';
@@ -21,6 +21,7 @@ interface AccessToken {
 
 const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourceId }) => {
   const params = useParams();
+  const location = useLocation();
   const actualResourceId = propResourceId || params.id || '';
   const { address, isConnected } = useAccount();
   const [resource, setResource] = useState<any>(null);
@@ -51,8 +52,17 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
   useEffect(() => {
     if (actualResourceId) {
       fetchResourceDetails();
-      checkAccess();
-      fetchAccessConfig(); // 添加获取访问权配置
+      // 从 URL 获取 access_token 参数
+      const searchParams = new URLSearchParams(location.search);
+      const accessTokenFromUrl = searchParams.get('access_token');
+      if (accessTokenFromUrl) {
+        // 如果 URL 中有 access_token，使用它来获取资源内容
+        handleUseAccessToken(accessTokenFromUrl);
+      } else {
+        // 否则只检查访问权限，不自动获取内容
+        checkAccess();
+      }
+      fetchAccessConfig();
     } else {
       setError('资源ID无效');
       setIsLoading(false);
@@ -66,6 +76,8 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
     }
   }, [resource, isPurchased]);
 
+  // 移除自动获取资源内容的useEffect
+
   const fetchResourceDetails = async () => {
     try {
       setIsLoading(true);
@@ -74,9 +86,9 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         const metadata = await NFTService.getResourceMetadata(actualResourceId);
         // 检查当前用户是否是所有者或已购买
         const isOwnerCheck = metadata.currentOwner && address && 
-                     metadata.currentOwner.toLowerCase() === address.toLowerCase();
+                       metadata.currentOwner.toLowerCase() === address.toLowerCase();
         const isCreator = metadata.creator && address &&
-                     metadata.creator.toLowerCase() === address.toLowerCase();
+                       metadata.creator.toLowerCase() === address.toLowerCase();
         
         // 设置所有者状态
         setIsOwner(!!(isOwnerCheck || isCreator));
@@ -393,6 +405,26 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
     }
   };
 
+  // 重定向到内容页面而不是在当前页面使用访问权
+  const handleUseAccessToken = (tokenId: string) => {
+    window.location.href = `/resource/${actualResourceId}/content?access_token=${tokenId}`;
+  };
+
+  // 查看资源内容的方法
+  const handleViewContent = () => {
+    if (accessToken) {
+      // 如果有访问权，使用访问权令牌跳转
+      window.location.href = `/resource/${actualResourceId}/content?access_token=${accessToken.tokenId}`;
+    } else if (isPurchased || hasAccess) {
+      // 如果已购买资源或有其他访问权限，直接跳转
+      window.location.href = `/resource/${actualResourceId}/content`;
+    } else {
+      alert('您没有访问此资源的权限');
+    }
+  };
+
+  // 移除获取资源内容的方法
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
@@ -552,7 +584,21 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
             <div className="space-y-2">
               <p>类型：{accessToken.accessType}</p>
               <p>剩余使用次数：{accessToken.maxUses - accessToken.usedCount}</p>
-              <p>过期时间：{new Date(accessToken.expiryTime).toLocaleDateString()}</p>
+              <p>过期时间：{new Date(accessToken.expiryTime).toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}</p>
+              <p>状态：{accessToken.isActive ? '有效' : '已失效'}</p>
+              <button
+                onClick={() => handleUseAccessToken(accessToken.tokenId)}
+                disabled={isLoading || !accessToken.isActive || accessToken.usedCount >= accessToken.maxUses}
+                className="w-full mt-2 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isLoading ? '处理中...' : '立即使用访问权'}
+              </button>
             </div>
           </div>
         )}
@@ -648,6 +694,22 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
           </div>
         )}
 
+        {/* 资源内容入口 */}
+        {(isPurchased || hasAccess) && (
+          <div className="mt-8 border-t pt-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">资源内容</h2>
+            <div className="bg-gray-50 p-6 rounded-lg text-center">
+              <p className="text-gray-600 mb-4">您已拥有此资源的访问权限</p>
+              <button
+                onClick={handleViewContent}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all hover:scale-105"
+              >
+                查看资源内容
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 操作按钮 */}
         <div className="flex justify-end space-x-4">
           {!isConnected ? (
@@ -693,7 +755,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         </div>
       </div>
 
-      {/* 在资源详情部分添加版税信息显示 */}
+      {/* 在资源详情部分添加版税信息 */}
       <div className="bg-white shadow rounded-lg p-6 mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">资源详情</h2>
         <div className="space-y-4">

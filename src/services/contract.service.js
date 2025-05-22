@@ -695,12 +695,12 @@ export class ContractService {
             logger.info(`TokenId: ${tokenId}`);
             logger.info(`Price: ${price} ETH`);
             logger.info(`Signature: ${signature}`);
-
+            
             // 验证签名
             const message = `Buy token ${tokenId} for ${price} ETH`;
             const recoveredAddress = ethers.verifyMessage(message, signature);
             logger.info(`签名验证成功，恢复的地址: ${recoveredAddress}`);
-
+            
             // 检查NFT是否已上架
             try {
                 logger.info('检查NFT上架状态...');
@@ -977,12 +977,22 @@ export class ContractService {
 
     async useAccessToken(accessTokenId, userAddress) {
         try {
-            const tx = await this.marketContract.useAccessToken(accessTokenId, {
+            logger.info(`[ContractService] useAccessToken: 用户 ${userAddress} 使用访问权 ${accessTokenId}`);
+            
+            // 使用 accessTokenContract 而不是 marketContract
+            const tx = await this.accessTokenContract.useAccessToken(accessTokenId, {
                 from: userAddress
             });
+            
+            logger.info(`[ContractService] useAccessToken: 交易已发送 ${tx.hash}`);
+            
+            // 等待交易确认
+            const receipt = await tx.wait();
+            logger.info(`[ContractService] useAccessToken: 交易已确认 ${receipt.transactionHash}`);
+            
             return tx;
         } catch (error) {
-            logger.error('使用访问权失败:', error);
+            logger.error('[ContractService] useAccessToken: 使用访问权失败:', error);
             throw error;
         }
     }
@@ -1224,6 +1234,44 @@ export class ContractService {
         } catch (error) {
             logger.error(`[ContractService] getResourceAccessConfig: 获取资源 ${resourceId} 的访问权配置失败: ${error.message}`);
             throw new Error(`获取访问权配置失败: ${error.message}`);
+        }
+    }
+
+    // 获取资源内容 
+    async getResourceContent(resourceId) {
+        logger.info(`[ContractService] getResourceContent: 获取资源 ${resourceId} 的内容`);
+        try {
+            // 获取资源元数据
+            const metadata = await this.academicNFTContract.getResourceMetadata(resourceId);
+            const ipfsHash = metadata.ipfsHash;
+            
+            if (!ipfsHash || ipfsHash === '') {
+                logger.warn(`[ContractService] getResourceContent: 资源 ${resourceId} 没有 IPFS 哈希`);
+                throw new Error('资源没有 IPFS 哈希');
+            }
+            
+            logger.info(`[ContractService] getResourceContent: 资源 ${resourceId} 的 IPFS 哈希: ${ipfsHash}`);
+            
+            // 导入 IPFS 服务
+            const ipfsService = (await import('../services/ipfs.js')).default;
+            
+            // 从 IPFS 获取内容
+            const fileBuffer = await ipfsService.getFile(ipfsHash);
+            
+            // 尝试将内容转换为文本
+            let content;
+            try {
+                content = fileBuffer.toString('utf8');
+                logger.info(`[ContractService] getResourceContent: 成功获取资源 ${resourceId} 的内容，长度 ${content.length}`);
+            } catch (error) {
+                logger.warn(`[ContractService] getResourceContent: 无法将资源内容转换为文本，将返回 base64 编码`);
+                content = `该资源内容无法直接显示，可能是二进制文件。请下载完整资源进行查看。\n\n资源信息:\n文件类型: 二进制\nIPFS 哈希: ${ipfsHash}\n资源ID: ${resourceId}`;
+            }
+            
+            return content;
+        } catch (error) {
+            logger.error(`[ContractService] getResourceContent: 获取资源 ${resourceId} 内容失败:`, error);
+            throw new Error(`获取资源内容失败: ${error.message}`);
         }
     }
 } 
