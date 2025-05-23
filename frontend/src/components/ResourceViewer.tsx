@@ -481,7 +481,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         {/* 访问权配置区域 - 仅对资源所有者显示 */}
         {isOwner && (
           <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-            <h3 className="text-lg font-semibold mb-4">访问权配置管理</h3>
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">访问权配置管理</h3>
             
             {isLoadingConfig ? (
               <div className="flex justify-center">
@@ -491,22 +491,22 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">最大访问权数量</label>
+                    <label className="block text-sm font-medium text-gray-900">最大访问权数量</label>
                     <input
                       type="number"
                       value={configMaxTokens}
                       onChange={(e) => setConfigMaxTokens(Number(e.target.value))}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-gray-900"
                       min="1"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">访问权价格 (ETH)</label>
+                    <label className="block text-sm font-medium text-gray-900">访问权价格 (ETH)</label>
                     <input
                       type="text"
                       value={configPrice}
                       onChange={(e) => setConfigPrice(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-gray-900"
                     />
                   </div>
                 </div>
@@ -518,7 +518,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
                       onChange={(e) => setConfigActive(e.target.checked)}
                       className="h-4 w-4 text-blue-600 rounded"
                     />
-                    <span className="ml-2">允许购买访问权</span>
+                    <span className="ml-2 text-gray-900">允许购买访问权</span>
                   </label>
                 </div>
                 <button
@@ -528,11 +528,11 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
                 >
                   {isUpdatingConfig ? '更新中...' : '更新访问权配置'}
                 </button>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-900 mt-2">
                   * 设置访问权配置后，其他用户可以购买临时访问权，而不必购买完整的NFT
                 </p>
                 {accessConfig && (
-                  <div className="text-sm text-gray-600 mt-2">
+                  <div className="text-sm text-gray-900 mt-2">
                     <p>当前访问权状态: {accessConfig.isActive ? '已激活' : '未激活'}</p>
                     <p>价格: {accessConfig.price ? ethers.utils.formatEther(accessConfig.price) : '0'} ETH</p>
                     <p>已售出: {accessConfig.currentAccessTokens || 0} / {accessConfig.maxAccessTokens || 0}</p>
