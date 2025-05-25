@@ -72,6 +72,12 @@ const config = {
   indexer: {
     enabled: process.env.INDEXER_ENABLED === 'true' || false,
     syncInterval: parseInt(process.env.INDEXER_SYNC_INTERVAL || 1000) // 默认每5分钟同步一次
+  },
+
+  // 加密配置
+  encryption: {
+    key: process.env.ENCRYPTION_KEY || null, // 如果未设置，将使用随机生成的密钥
+    algorithm: 'aes-256-gcm' // 使用AES-256-GCM算法
   }
 };
 

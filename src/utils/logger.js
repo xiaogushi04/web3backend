@@ -6,11 +6,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 添加 BigInt 序列化处理
-const stringify = (obj) => {
+// 自定义 stringify 函数，处理循环引用
+const customStringify = (obj) => {
+    const seen = new WeakSet();
     return JSON.stringify(obj, (key, value) => {
-        if (typeof value === 'bigint') {
-            return value.toString();
+        if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+                return '[Circular]';
+            }
+            seen.add(value);
         }
         return value;
     });
@@ -25,7 +29,7 @@ const logger = winston.createLogger({
         winston.format.printf(({ level, message, timestamp, ...metadata }) => {
             let msg = `${timestamp} [${level.toUpperCase()}]: ${message}`;
             if (Object.keys(metadata).length > 0) {
-                msg += `\n${stringify(metadata)}`;
+                msg += `\n${customStringify(metadata)}`;
             }
             return msg;
         })
