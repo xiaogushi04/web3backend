@@ -8,6 +8,7 @@ import NFT from '../models/nft.model.js';
 import AcademicNFT from '../../artifacts/src/contracts/AcademicNFT.sol/AcademicNFT.json' assert { type: 'json' };
 import Market from '../../artifacts/src/contracts/Market.sol/AcademicMarket.json' assert { type: 'json' };
 import AccessToken from '../../artifacts/src/contracts/AccessToken.sol/AccessToken.json' assert { type: 'json' };
+import encryptionService from './encryption.js';
 
 export class ContractService {
     constructor() {
@@ -1255,8 +1256,15 @@ export class ContractService {
             // 导入 IPFS 服务
             const ipfsService = (await import('../services/ipfs.js')).default;
             
-            // 从 IPFS 获取内容
-            const fileBuffer = await ipfsService.getFile(ipfsHash);
+            // 从 IPFS 获取加密的内容
+            logger.info(`[ContractService] getResourceContent: 开始从 IPFS 获取加密文件`);
+            const encryptedFile = await ipfsService.getFile(ipfsHash);
+            logger.info(`[ContractService] getResourceContent: 成功从 IPFS 获取加密文件`);
+            
+            // 解密文件
+            logger.info(`[ContractService] getResourceContent: 开始解密文件`);
+            const fileBuffer = await encryptionService.decryptFile(encryptedFile);
+            logger.info(`[ContractService] getResourceContent: 文件解密完成`);
             
             // 尝试将内容转换为文本
             let content;

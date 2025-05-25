@@ -51,6 +51,11 @@ const resourceSchema = new mongoose.Schema({
     default: true,
     index: true
   },
+  isEncrypted: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -73,4 +78,6 @@ resourceSchema.index({ owner: 1, createdAt: -1 });
 resourceSchema.index({ 'metadata.tags': 1, createdAt: -1 });
 resourceSchema.index({ 'metadata.category': 1, createdAt: -1 });
 
-export default mongoose.model('Resource', resourceSchema); 
+const Resource = mongoose.model('Resource', resourceSchema);
+
+export default Resource; 
