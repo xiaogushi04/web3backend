@@ -243,6 +243,14 @@ export const NFTService = {
         marketAddress
       );
 
+      if (!isApproved) {
+        console.log('NFT 尚未授权给 Market 合约，正在请求授权...');
+        const approvalTx = await nftContract.setApprovalForAll(marketAddress, true);
+        console.log('等待授权交易确认...');
+        await approvalTx.wait();
+        console.log('授权成功！');
+      }
+
       // 如果未授权，先进行授权
       if (!isApproved) {
         console.log('Market合约未授权，开始授权...');
@@ -734,6 +742,14 @@ export const NFTService = {
       
       if (!window.ethereum) {
         throw new Error('请安装 MetaMask 钱包');
+      }
+
+      // 验证价格
+      if (!price || parseFloat(price) <= 0) {
+        return {
+          success: false,
+          message: '价格必须大于 0 ETH'
+        };
       }
 
       // 获取当前连接的账户地址

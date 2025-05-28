@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Navigation from './Navigation';
+import Header from './Header';
 import { useAccount, useChainId, useSwitchChain } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 
@@ -22,7 +23,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [isConnected, chainId]);
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-gray-100">
+      {/* 顶部 Banner */}
+      <Header />
+
+      {/* 网络警告 */}
       {isConnected && isWrongNetwork && (
         <div className="bg-yellow-600 text-white p-2 text-center">
           <p className="text-sm">
@@ -37,19 +42,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </p>
         </div>
       )}
-      <div className="max-w-7xl mx-auto">
-        <div className="flex">
-          {/* 左侧导航栏 */}
-          <div className="w-[275px] fixed h-screen border-r border-gray-800">
+
+      <div className="flex h-[calc(100vh-4rem)]">
+        {/* 左侧导航栏 */}
+        <div className="w-64 bg-white shadow-lg">
+          <div className="h-full overflow-y-auto">
             <Navigation />
           </div>
+        </div>
 
-          {/* 主内容区域 */}
-          <div className="ml-[275px] flex-1">
-            <main className="max-w-2xl mx-auto">
-              {children}
-            </main>
-          </div>
+        {/* 主内容区域 */}
+        <div className="flex-1 overflow-y-auto">
+          <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            {children}
+          </main>
         </div>
       </div>
     </div>

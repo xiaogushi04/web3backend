@@ -4,6 +4,7 @@ import { useAccount } from 'wagmi';
 import { NFTService } from '../services/nftApi';
 import { ethers } from 'ethers';
 import { blockchainConfig } from '../config/blockchain';
+import { useToast } from './ToastManager';
 
 interface ResourceViewerProps {
   resourceId: string;
@@ -22,6 +23,7 @@ interface AccessToken {
 const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourceId }) => {
   const params = useParams();
   const location = useLocation();
+  const { showToast } = useToast();
   const actualResourceId = propResourceId || params.id || '';
   const { address, isConnected } = useAccount();
   const [resource, setResource] = useState<any>(null);
@@ -170,12 +172,12 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
 
   const handleDownload = async () => {
     if (!isConnected) {
-      alert('请先连接钱包');
+      showToast('请先连接钱包', 'warning');
       return;
     }
 
     if (!isPurchased) {
-      alert('请先购买资源');
+      showToast('请先购买资源', 'warning');
       return;
     }
 
@@ -208,7 +210,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         document.body.removeChild(a);
       } catch (error) {
         console.error('下载失败:', error);
-        alert('下载失败，请稍后再试');
+        showToast('下载失败，请稍后再试', 'error');
       }
     } finally {
       setIsDownloading(false);
@@ -217,12 +219,12 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
 
   const handlePurchase = async () => {
     if (!isConnected) {
-      alert('请先连接钱包');
+      showToast('请先连接钱包', 'warning');
       return;
     }
 
     if (!resource || !resource.id || !resource.price) {
-      alert('资源信息不完整，无法购买');
+      showToast('资源信息不完整，无法购买', 'error');
       return;
     }
 
@@ -233,7 +235,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       
       if (result && result.success) {
         setIsPurchased(true);
-        alert('购买成功！');
+        showToast('购买成功！', 'success');
         // 刷新资源详情
         fetchResourceDetails();
       } else {
@@ -241,7 +243,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       }
     } catch (error: any) {
       console.error('购买失败:', error);
-      alert(`购买失败: ${error.message || '未知错误'}`);
+      showToast(`购买失败: ${error.message || '未知错误'}`, 'error');
     } finally {
       setIsPurchasing(false);
     }
@@ -372,7 +374,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
   // 更新访问权配置
   const handleUpdateAccessConfig = async () => {
     if (!isConnected) {
-      alert('请先连接钱包');
+      showToast('请先连接钱包', 'warning');
       return;
     }
     
@@ -392,14 +394,14 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       console.log(`[ResourceViewer] handleUpdateAccessConfig: 更新结果:`, result);
       
       if (result.success) {
-        alert('访问权配置更新成功！');
+        showToast('访问权配置更新成功！', 'success');
         fetchAccessConfig(); // 重新获取配置
       } else {
         throw new Error(result.message || '更新失败');
       }
     } catch (error: any) {
       console.error('[ResourceViewer] handleUpdateAccessConfig: 更新访问权配置失败:', error);
-      alert(`更新访问权配置失败: ${error.message || '未知错误'}`);
+      showToast(`更新访问权配置失败: ${error.message || '未知错误'}`, 'error');
     } finally {
       setIsUpdatingConfig(false);
     }
@@ -419,7 +421,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
       // 如果已购买资源或有其他访问权限，直接跳转
       window.location.href = `/resource/${actualResourceId}/content`;
     } else {
-      alert('您没有访问此资源的权限');
+      showToast('您没有访问此资源的权限', 'error');
     }
   };
 
@@ -544,38 +546,38 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         )}
 
         {/* 访问权状态 */}
-        {!isPurchased && !hasAccess && (
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-4">购买访问权</h3>
+        {!isPurchased && !hasAccess &&
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold mb-4 text-white">购买访问权</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">访问时长（天）</label>
+                <label className="block text-sm font-medium text-white">访问时长（天）</label>
                 <input
                   type="number"
                   value={accessDuration}
                   onChange={(e) => setAccessDuration(Number(e.target.value))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">最大使用次数</label>
+                <label className="block text-sm font-medium text-white">最大使用次数</label>
                 <input
                   type="number"
                   value={maxUses}
                   onChange={(e) => setMaxUses(Number(e.target.value))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <button
                 onClick={handleBuyAccess}
                 disabled={isBuyingAccess}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed"
               >
                 {isBuyingAccess ? '处理中...' : '购买访问权'}
               </button>
             </div>
           </div>
-        )}
+        }
 
         {/* 访问权信息 */}
         {accessToken && (
@@ -661,7 +663,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
             {showBreakdown && purchaseBreakdown && (
               <div className="bg-gray-50 p-4 rounded-md mt-2">
                 <div className="text-sm space-y-2">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-gray-700">
                     <span>平台服务费 ({purchaseBreakdown.platformFeePercentage}%):</span>
                     <span>{ethers.utils.formatEther(purchaseBreakdown.platformFee)} ETH</span>
                   </div>
@@ -673,7 +675,7 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
                     </div>
                   )}
                   
-                  <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                  <div className="flex justify-between border-t border-gray-200 pt-2 mt-2 text-gray-700">
                     <span>卖家收入:</span>
                     <span>{ethers.utils.formatEther(purchaseBreakdown.sellerReceives)} ETH</span>
                   </div>

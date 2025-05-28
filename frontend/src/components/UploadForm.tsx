@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import axios from 'axios';
+import { useToast } from './ToastManager';
 
 interface UploadFormProps {
   onUpload?: (file: File, metadata: any) => Promise<void>;
@@ -8,6 +9,7 @@ interface UploadFormProps {
 
 const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
   const { address } = useAccount();
+  const { showToast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [metadata, setMetadata] = useState({
     title: '',
@@ -56,12 +58,12 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
-      alert('请选择要上传的文件');
+      showToast('请选择要上传的文件', 'warning');
       return;
     }
 
     if (!address) {
-      alert('请先连接钱包');
+      showToast('请先连接钱包', 'warning');
       return;
     }
 
@@ -86,7 +88,7 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
       });
 
       if (response.data.success) {
-        alert('NFT 铸造成功！');
+        showToast('NFT 铸造成功！', 'success');
         // 重置表单
         setFile(null);
         setMetadata({
@@ -102,7 +104,7 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUpload }) => {
       }
     } catch (error) {
       console.error('上传失败:', error);
-      alert('上传失败，请重试');
+      showToast('上传失败，请重试', 'error');
     } finally {
       setIsUploading(false);
     }

@@ -76,8 +76,8 @@ const config = {
 
   // 加密配置
   encryption: {
-    key: process.env.ENCRYPTION_KEY || null, // 如果未设置，将使用随机生成的密钥
-    algorithm: 'aes-256-gcm' // 使用AES-256-GCM算法
+    key: process.env.ENCRYPTION_KEY || 'VXNlIHRoaXMgc2VjcmV0IGtleSB0byBlbmNyeXB0IGFuZCBkZWNyeXB0IGZpbGVz', // 默认的 base64 编码密钥
+    algorithm: 'aes-256-gcm'
   }
 };
 

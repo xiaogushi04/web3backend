@@ -1,7 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { injected } from 'wagmi/connectors';
+
+// 定义菜单项接口
+interface MenuItem {
+  id: string;
+  title: string;
+  icon: ReactElement;
+  path?: string;
+  children?: MenuItem[];
+}
 
 // 定义本地存储键名
 const DISCONNECT_FLAG = 'wallet_manual_disconnect';
@@ -16,305 +25,138 @@ const Navigation: React.FC = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  // 检测MetaMask账户更改事件
-  useEffect(() => {
-    const handleAccountsChanged = (accounts: string[]) => {
-      console.log('MetaMask账户已更改:', accounts);
-      
-      // 如果账户列表为空，则可能是断开连接了
-      if (!accounts || accounts.length === 0) {
-        console.log('MetaMask账户断开连接');
-        disconnect();
-      }
-    };
-    
-    // 检测网络更改事件
-    const handleChainChanged = () => {
-      console.log('链已更改，刷新页面');
-      window.location.reload();
-    };
-    
-    if (window.ethereum && typeof window.ethereum === 'object') {
-      // 确保ethereum对象及其方法存在
-      const ethereum = window.ethereum as any;
-      if (typeof ethereum.on === 'function') {
-        // 添加事件监听器
-        ethereum.on('accountsChanged', handleAccountsChanged);
-        ethereum.on('chainChanged', handleChainChanged);
-      }
-    }
-    
-    return () => {
-      // 清理事件监听器
-      if (window.ethereum && typeof window.ethereum === 'object') {
-        const ethereum = window.ethereum as any;
-        if (typeof ethereum.removeListener === 'function') {
-          ethereum.removeListener('accountsChanged', handleAccountsChanged);
-          ethereum.removeListener('chainChanged', handleChainChanged);
-        }
-      }
-    };
-  }, [disconnect]);
 
-  // 检查MetaMask是否已安装
+  // 菜单配置
+  const menuItems: MenuItem[] = [
+    {
+      id: 'home',
+      title: '首页',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      ),
+      path: '/'
+    },
+    {
+      id: 'resources',
+      title: '资源管理',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      ),
+      children: [
+        {
+          id: 'upload',
+          title: '上传资源',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          ),
+          path: '/upload'
+        },
+        {
+          id: 'my-resources',
+          title: '我的资源',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          ),
+          path: '/profile'
+        }
+      ]
+    },
+    {
+      id: 'about',
+      title: '项目介绍',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      path: '/about'
+    }
+  ];
+
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.ethereum) {
-      setIsMetaMaskInstalled(
-        'isMetaMask' in window.ethereum && Boolean(window.ethereum.isMetaMask)
-      );
+    // 检查是否安装了 MetaMask
+    if (typeof window.ethereum !== 'undefined') {
+      setIsMetaMaskInstalled(true);
+    }
+
+    // 检查是否之前手动断开过连接
+    const wasManuallyDisconnected = localStorage.getItem(DISCONNECT_FLAG) === 'true';
+    
+    // 如果之前没有手动断开过连接，并且检测到以太坊提供商，则尝试自动连接
+    if (!wasManuallyDisconnected && window.ethereum) {
+      handleConnect();
     }
   }, []);
 
-  // 显示错误
-  useEffect(() => {
-    if (error) {
-      console.error('连接错误:', error.message);
-      setErrorMsg(error.message);
-      setShowError(true);
-    }
-  }, [error]);
-
-  const isActive = (path: string) => {
-    return location.pathname === path;
-  };
-
-  const navItems = [
-    { path: '/', label: '首页' },
-    { path: '/upload', label: '上传资源' },
-    { path: '/profile', label: '个人中心' }
-  ];
-
-  // 连接钱包 - 直接使用原生MetaMask API
-  const handleConnectWallet = async () => {
+  const handleConnect = async () => {
     try {
-      console.log('开始连接钱包...');
       setShowError(false);
       setErrorMsg(null);
-      
-      if (!window.ethereum) {
-        const error = 'MetaMask未安装';
-        console.error(error);
-        setErrorMsg(error);
-        window.open('https://metamask.io/download/', '_blank');
-        return;
-      }
-      
-      // 如果已经连接，就不再重复连接
-      if (isConnected && address) {
-        console.log('已经连接到钱包:', address);
-        return;
-      }
-      
-      // 通过原生方式直接与MetaMask交互，绕过wagmi以确保显示账户选择
-      const ethereum = window.ethereum as any;
-      
-      try {
-        // 直接请求MetaMask选择账户
-        const accounts = await ethereum.request({ 
-          method: 'eth_requestAccounts' 
-        });
-        
-        console.log('获取到的账户:', accounts);
-        
-        if (!accounts || accounts.length === 0) {
-          setErrorMsg('未选择账户');
-          return;
-        }
-        
-        // 检查是否已经连接到获取的账户
-        if (isConnected && address && accounts[0].toLowerCase() === address.toLowerCase()) {
-          console.log('已经连接到选择的账户:', address);
-          return;
-        }
-        
-        // 现在使用wagmi来更新连接状态
-        const connector = injected();
-        connect({ connector });
-      } catch (err: any) {
-        console.error('MetaMask连接错误:', err);
-        setErrorMsg(err?.message || '连接钱包失败');
-        setShowError(true);
-      }
+      await connect({ connector: injected() });
     } catch (err: any) {
-      console.error('连接失败:', err);
-      setErrorMsg(err?.message || '操作失败');
+      console.error('连接错误:', err);
       setShowError(true);
+      setErrorMsg(err.message || '连接钱包失败');
     }
   };
-  
-  // 断开连接 - 直接使用原生MetaMask API
+
   const handleDisconnect = async () => {
     try {
-      console.log('断开钱包连接...');
       setDisconnecting(true);
-      setErrorMsg(null);
-      
-      // 使用wagmi断开
       disconnect();
-      
-      // 尝试清除MetaMask会话，强制下次连接时显示账户选择
-      if (window.ethereum && typeof window.ethereum.request === 'function') {
-        try {
-          // 由于MetaMask原生不支持断开连接API，这里我们强制刷新页面
-          // 这将清除应用状态，确保断开连接状态
-          setTimeout(() => {
-            window.location.reload();
-          }, 300);
-        } catch (err) {
-          console.warn('清除连接状态失败:', err);
-        }
-      }
-    } catch (error: any) {
-      console.error('断开连接失败:', error);
-      setErrorMsg(error?.message || '断开连接失败');
+      localStorage.setItem(DISCONNECT_FLAG, 'true');
+    } catch (err) {
+      console.error('断开连接错误:', err);
+    } finally {
       setDisconnecting(false);
     }
   };
 
-  return (
-    <nav className="h-full flex flex-col justify-between p-3">
-      <div>
-        {/* Logo */}
-        <div className="mb-6">
-          <Link to="/" className="text-xl font-bold">
-            学术共享
+  const renderMenuItem = (item: MenuItem) => {
+    const isActive = item.path === location.pathname;
+    const baseClasses = "flex items-center space-x-2 px-4 py-2 text-sm rounded-lg transition-colors duration-200";
+    const activeClasses = "bg-blue-500 text-white";
+    const inactiveClasses = "text-gray-600 hover:bg-gray-100";
+
+    return (
+      <div key={item.id} className="mb-1">
+        {item.path ? (
+          <Link
+            to={item.path}
+            className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+          >
+            {item.icon}
+            <span>{item.title}</span>
           </Link>
-        </div>
-
-        {/* 导航链接 */}
-        <div className="space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`block px-3 py-2 rounded-full text-base font-medium transition-colors ${
-                isActive(item.path)
-                  ? 'text-white'
-                  : 'text-gray-400 hover:bg-gray-900 hover:text-white'
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* 钱包连接按钮 */}
-      <div className="mt-auto">
-        {showError && errorMsg && (
-          <div className="mb-3 p-2 bg-red-800/50 text-white rounded-lg text-xs">
-            <p className="font-semibold">连接错误:</p>
-            <p>{errorMsg}</p>
-            <button 
-              className="text-blue-300 underline mt-1"
-              onClick={() => setShowError(false)}
-            >
-              关闭
-            </button>
-          </div>
-        )}
-
-        {isConnected ? (
-          <div className="space-y-3">
-            <div className="px-3 py-2 bg-gray-900 rounded-full flex items-center space-x-2">
-              {isMetaMaskInstalled && (
-                <img 
-                  src="https://metamask.io/images/metamask-fox.svg" 
-                  alt="MetaMask" 
-                  className="w-4 h-4"
-                />
-              )}
-              <span className="text-sm text-gray-400">
-                {address?.slice(0, 6)}...{address?.slice(-4)}
-              </span>
-            </div>
-            <button
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="w-full px-3 py-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors text-sm flex justify-center items-center"
-            >
-              {disconnecting ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  断开中...
-                </>
-              ) : (
-                '断开连接'
-              )}
-            </button>
-          </div>
         ) : (
-          <>
-            <button
-              onClick={handleConnectWallet}
-              disabled={isPending}
-              className="w-full px-3 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors text-sm flex justify-center items-center"
-            >
-              {isPending ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  连接中...
-                </>
-              ) : (
-                '连接钱包'
-              )}
-            </button>
-            
-            <div className="mt-1 flex justify-center">
-              <button 
-                onClick={() => setShowHelp(!showHelp)}
-                className="text-xs text-gray-500 hover:text-gray-400"
-              >
-                {showHelp ? '隐藏帮助' : '需要帮助?'}
-              </button>
-            </div>
-            
-            {showHelp && (
-              <div className="mt-2 p-2 bg-gray-900/70 rounded-lg text-xs text-gray-300">
-                <p>连接步骤:</p>
-                <ol className="list-decimal pl-4 mt-1 space-y-1">
-                  <li>确保安装了MetaMask</li>
-                  <li>点击"连接钱包"按钮</li>
-                  <li>在MetaMask弹窗中确认连接</li>
-                  <li>切换到Sepolia测试网</li>
-                </ol>
-                <p className="mt-2">切换账户:</p>
-                <ol className="list-decimal pl-4 mt-1 space-y-1">
-                  <li>点击"断开连接"</li>
-                  <li>再次点击"连接钱包"</li>
-                  <li>在MetaMask中选择其他账户</li>
-                </ol>
-              </div>
-            )}
-          </>
+          <div className={`${baseClasses} text-gray-900 font-medium`}>
+            {item.icon}
+            <span>{item.title}</span>
+          </div>
         )}
-
-        {/* MetaMask状态指示器 */}
-        {!isConnected && (
-          <div className="mt-2 text-xs text-gray-500 text-center">
-            {isMetaMaskInstalled ? (
-              <span className="text-green-500">MetaMask 已安装</span>
-            ) : (
-              <a 
-                href="https://metamask.io/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-yellow-500 underline"
-              >
-                请安装 MetaMask
-              </a>
-            )}
+        {item.children && (
+          <div className="ml-4 mt-1 space-y-1">
+            {item.children.map(child => renderMenuItem(child))}
           </div>
         )}
       </div>
-    </nav>
+    );
+  };
+
+  return (
+    <div className="h-full flex flex-col py-4">
+      <div className="flex-1 space-y-1">
+        {menuItems.map(item => renderMenuItem(item))}
+      </div>
+    </div>
   );
 };
 

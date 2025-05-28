@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import NFTService from '../services/nftApi';
 import type { ChangeEvent } from 'react';
 import { ethers } from 'ethers';
+import { useToast } from '../components/ToastManager';
 
 // 声明 JSX 命名空间
 declare global {
@@ -28,7 +29,8 @@ interface AccessToken {
 }
 
 const Profile: React.FC = () => {
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
+  const { showToast } = useToast();
   const [userResources, setUserResources] = useState<any[]>([]);
   const [accessTokens, setAccessTokens] = useState<AccessToken[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,7 +130,7 @@ const Profile: React.FC = () => {
 
   const handleListNFT = async (tokenId: string) => {
     if (!tokenId || !listingPrice || parseFloat(listingPrice) <= 0) {
-      alert('请输入有效的价格');
+      showToast('请输入有效的价格', 'warning');
       return;
     }
 
@@ -161,7 +163,7 @@ const Profile: React.FC = () => {
         const result = await NFTService.listResource(tokenId, listingPrice, signature);
         
         if (result && result.success) {
-          alert('NFT上架成功！');
+          showToast('NFT上架成功！', 'success');
           // 重置状态
           setListingTokenId(null);
           setListingPrice('0.1');
@@ -172,11 +174,11 @@ const Profile: React.FC = () => {
         }
       } catch (error: any) {
         console.error('上架失败:', error);
-        alert(`上架失败: ${error.message || '未知错误'}`);
+        showToast(`上架失败: ${error.message || '未知错误'}`, 'error');
       }
     } catch (error: any) {
       console.error('上架失败:', error);
-      alert(`上架失败: ${error.message || '未知错误'}`);
+      showToast(`上架失败: ${error.message || '未知错误'}`, 'error');
     } finally {
       setIsListing(false);
     }
@@ -184,7 +186,7 @@ const Profile: React.FC = () => {
 
   const handleCancelListing = async (tokenId: string) => {
     // TODO: 实现下架功能，如果后端提供了相应接口
-    alert('下架功能暂未实现');
+    showToast('下架功能暂未实现', 'info');
   };
 
   const handleUseAccessToken = async (tokenId: string) => {
@@ -226,7 +228,7 @@ const Profile: React.FC = () => {
       }
     } catch (error) {
       console.error('销毁访问权失败:', error);
-      alert('销毁访问权失败，请稍后再试');
+      showToast('销毁访问权失败，请稍后再试', 'error');
     }
   };
 
