@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ContractService } from '../services/contract.service.js';
 import nftService from '../services/nft.service.js';
 import ipfsService from '../services/ipfs.js';
+import encryptionService from '../services/encryption.js';
 import multer from 'multer';
 import logger from '../utils/logger.js';
 import { ethers } from 'ethers';
@@ -47,14 +48,19 @@ router.post('/mint-with-file',
             });
         }
 
-        // 上传文件到 IPFS
-        logger.info('开始上传文件到 IPFS');
-        const { cid } = await ipfsService.uploadFile(req.file.buffer);
+        // 加密文件
+        logger.info('开始加密文件...');
+        const encryptedFile = await encryptionService.encryptFile(req.file.buffer);
+        logger.info('文件加密完成');
+
+        // 上传加密后的文件到 IPFS
+        logger.info('开始上传加密文件到 IPFS');
+        const { cid } = await ipfsService.uploadFile(encryptedFile);
         if (!cid) {
             logger.error('IPFS 上传失败，CID 为空');
             return res.status(500).json({ success: false, error: 'IPFS 上传失败，CID 为空' });
         }
-        logger.info('文件上传成功，CID:', cid);
+        logger.info('加密文件上传成功，CID:', cid);
 
         // 开始固定文件
         try {

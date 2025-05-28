@@ -76,7 +76,7 @@ const config = {
 
   // 加密配置
   encryption: {
-    key: process.env.ENCRYPTION_KEY || 'VXNlIHRoaXMgc2VjcmV0IGtleSB0byBlbmNyeXB0IGFuZCBkZWNyeXB0IGZpbGVz', // 默认的 base64 编码密钥
+    key: process.env.ENCRYPTION_KEY || 'VshesswmjRiEmrBU6Ic2v8+Z4UERybLkCMLNMT9ydZI=', // 默认的 base64 编码密钥
     algorithm: 'aes-256-gcm'
   }
 };
