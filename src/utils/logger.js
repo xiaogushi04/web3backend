@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 自定义 stringify 函数，处理循环引用
+// 自定义 stringify 函数，处理循环引用和 BigInt
 const customStringify = (obj) => {
     const seen = new WeakSet();
     return JSON.stringify(obj, (key, value) => {
@@ -15,6 +15,10 @@ const customStringify = (obj) => {
                 return '[Circular]';
             }
             seen.add(value);
+        }
+        // 处理 BigInt 类型
+        if (typeof value === 'bigint') {
+            return value.toString();
         }
         return value;
     });
