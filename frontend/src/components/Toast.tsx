@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../hooks/useToast';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -9,11 +10,10 @@ interface ToastProps {
   onClose: () => void;
 }
 
-const Toast: React.FC<ToastProps> = ({ message, type, duration = 5000, onClose }) => {
+const ToastMessage: React.FC<ToastProps> = ({ message, type, duration = 5000, onClose }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(100);
   const [startTime] = useState(Date.now());
-  const [remainingTime, setRemainingTime] = useState(duration);
 
   const getToastStyles = (type: ToastType) => {
     switch (type) {
@@ -55,7 +55,6 @@ const Toast: React.FC<ToastProps> = ({ message, type, duration = 5000, onClose }
           clearInterval(timer);
           onClose();
         } else {
-          setRemainingTime(remaining);
           setProgress((remaining / duration) * 100);
         }
       }, 10);
@@ -113,4 +112,19 @@ const Toast: React.FC<ToastProps> = ({ message, type, duration = 5000, onClose }
   );
 };
 
-export default Toast; 
+export const ToastContainer: React.FC = () => {
+  const { toasts, removeToast } = useToast();
+
+  return (
+    <div className="fixed top-4 right-4 z-50 space-y-2">
+      {toasts.map(toast => (
+        <ToastMessage
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+}; 

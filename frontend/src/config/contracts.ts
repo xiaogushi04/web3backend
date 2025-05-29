@@ -7,6 +7,43 @@ export const ERC721_ABI = [
   "function approve(address to, uint256 tokenId)"
 ];
 
+// ERC20 标准接口 ABI
+export const ERC20_ABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) returns (bool)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)"
+];
+
+// PlatformToken 合约 ABI
+export const PLATFORM_TOKEN_ABI = [
+  ...ERC20_ABI,
+  "function REWARD_RATE() view returns (uint256)",
+  "function MIN_VOLUME_THRESHOLD() view returns (uint256)",
+  "function creatorVolumes(address) view returns (uint256)",
+  "function claimedRewards(address) view returns (uint256)",
+  "function creatorLevels(address) view returns (uint8)",
+  "function levelBonusRates(uint8) view returns (uint256)",
+  "function levelThresholds(uint8) view returns (uint256)",
+  "function updateCreatorVolume(address creator, uint256 volume)",
+  "function calculateReward(address creator) view returns (uint256)",
+  "function claimReward()",
+  "function updateLevelBonusRate(uint8 level, uint256 newRate)",
+  "function updateLevelThreshold(uint8 level, uint256 newThreshold)",
+  "function getCreatorLevelInfo(address creator) view returns (uint8 level, uint256 totalVolume, uint256 nextLevelThreshold, uint256 currentBonusRate)",
+  "event RewardClaimed(address indexed creator, uint256 amount)",
+  "event CreatorLevelUp(address indexed creator, uint8 newLevel)",
+  "event LevelBonusRateUpdated(uint8 level, uint256 newRate)",
+  "event LevelThresholdUpdated(uint8 level, uint256 newThreshold)"
+];
+
 // AcademicNFT 合约 ABI
 export const ACADEMIC_NFT_ABI = [
   ...ERC721_ABI,

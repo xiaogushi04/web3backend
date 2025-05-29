@@ -16,6 +16,10 @@ interface IAcademicNFT {
     );
 }
 
+interface IPlatformToken {
+    function updateCreatorVolume(address creator, uint256 volume) external;
+}
+
 contract AcademicMarket is ReentrancyGuard, Ownable {
     // 平台费用比例（百分比）
     uint256 public platformFeePercentage = 2;
@@ -34,6 +38,9 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
 
     // 访问权合约地址
     address public accessTokenContract;
+
+    // 平台代币合约地址
+    address public platformTokenContract;
 
     // 上架信息结构
     struct Listing {
@@ -65,18 +72,22 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
         uint256 indexed accessTokenId,
         uint256 price
     );
+    event PlatformTokenContractUpdated(address newPlatformTokenContract);
 
     constructor(
         address _feeRecipient,
         address _nftContract,
-        address _accessTokenContract
+        address _accessTokenContract,
+        address _platformTokenContract
     ) Ownable() {
         require(_feeRecipient != address(0), "Invalid fee recipient address");
         require(_nftContract != address(0), "Invalid NFT contract address");
         require(_accessTokenContract != address(0), "Invalid access token contract address");
+        require(_platformTokenContract != address(0), "Invalid platform token contract address");
         feeRecipient = _feeRecipient;
         nftContract = _nftContract;
         accessTokenContract = _accessTokenContract;
+        platformTokenContract = _platformTokenContract;
     }
 
     // 上架 NFT
@@ -173,6 +184,11 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
         if (msg.value > price) {
             (bool refundSuccess, ) = msg.sender.call{value: msg.value - price}("");
             require(refundSuccess, "Refund failed");
+        }
+        
+        // 更新创作者的交易量
+        if (creator != address(0)) {
+            IPlatformToken(platformTokenContract).updateCreatorVolume(creator, price);
         }
 
         emit TokenSold(tokenId, seller, msg.sender, price);
@@ -361,6 +377,13 @@ contract AcademicMarket is ReentrancyGuard, Ownable {
         ownerReceives = price - platformFee - royaltyFee;
         
         return (price, platformFee, royaltyFee, ownerReceives, creator);
+    }
+
+    // 更新平台代币合约地址（仅限所有者）
+    function updatePlatformTokenContract(address newPlatformTokenContract) external onlyOwner {
+        require(newPlatformTokenContract != address(0), "Invalid platform token contract address");
+        platformTokenContract = newPlatformTokenContract;
+        emit PlatformTokenContractUpdated(newPlatformTokenContract);
     }
 }
 

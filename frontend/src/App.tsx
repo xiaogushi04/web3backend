@@ -13,6 +13,8 @@ import ResourceViewer from './components/ResourceViewer';
 import ResourceContent from './components/ResourceContent';
 import About from './pages/About';
 import { ToastProvider } from './components/ToastManager';
+import BalancePage from './pages/Balance';
+import { ToastContainer } from './components/Toast';
 
 // 项目ID - WalletConnect Cloud项目ID
 // 注意：这应该是您在 https://cloud.walletconnect.com 上注册的有效项目ID
@@ -88,12 +90,14 @@ const App: React.FC = () => {
                 <Route path="/" element={<Home />} />
                 <Route path="/upload" element={<UploadForm onUpload={async () => {}} />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/balance" element={<BalancePage />} />
                 <Route path="/resource/:id" element={<ResourceViewer resourceId="" />} />
                 <Route path="/resource/:id/content" element={<ResourceContent />} />
                 <Route path="/about" element={<About />} />
               </Routes>
             </Layout>
           </Router>
+          <ToastContainer />
         </ToastProvider>
       </QueryClientProvider>
     </WagmiConfig>

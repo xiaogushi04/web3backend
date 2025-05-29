@@ -1122,6 +1122,153 @@ export const NFTService = {
       throw error;
     }
   },
+
+  // 领取平台代币奖励
+  claimPlatformToken: async () => {
+    try {
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      const ethereum = window.ethereum;
+      if (!ethereum.request) {
+        throw new Error('钱包不支持请求方法');
+      }
+
+      // 获取当前连接的账户地址
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+
+      // 创建合约实例
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      
+      // 创建PlatformToken合约实例
+      const platformTokenContract = new ethers.Contract(
+        blockchainConfig.contracts.platformToken.address,
+        blockchainConfig.contracts.platformToken.abi,
+        signer
+      );
+
+      // 调用合约的claimReward方法
+      const tx = await platformTokenContract.claimReward();
+      console.log('领取奖励交易已发送:', tx.hash);
+      
+      // 等待交易确认
+      const receipt = await tx.wait();
+      console.log('领取奖励交易已确认:', receipt);
+
+      return {
+        success: true,
+        data: {
+          transactionHash: tx.hash
+        },
+        message: '领取奖励成功'
+      };
+    } catch (error: any) {
+      console.error('领取平台代币奖励失败:', error);
+      let errorMessage = '领取奖励失败';
+      
+      if (error.code === 4001) {
+        errorMessage = '用户拒绝了交易';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
+    }
+  },
+
+  // 获取可领取的奖励数量
+  getClaimableReward: async () => {
+    try {
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      const ethereum = window.ethereum;
+      if (!ethereum.request) {
+        throw new Error('钱包不支持请求方法');
+      }
+
+      // 获取当前连接的账户地址
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+
+      // 创建合约实例
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const platformTokenContract = new ethers.Contract(
+        blockchainConfig.contracts.platformToken.address,
+        blockchainConfig.contracts.platformToken.abi,
+        provider
+      );
+
+      // 调用合约的calculateReward方法
+      const reward = await platformTokenContract.calculateReward(userAddress);
+      
+      return {
+        success: true,
+        data: {
+          reward: reward.toString()
+        }
+      };
+    } catch (error) {
+      console.error('获取可领取奖励失败:', error);
+      return {
+        success: false,
+        message: '获取可领取奖励失败'
+      };
+    }
+  },
+
+  // 获取创作者等级信息
+  getCreatorLevelInfo: async () => {
+    try {
+      if (!window.ethereum) {
+        throw new Error('请安装 MetaMask 钱包');
+      }
+
+      const ethereum = window.ethereum;
+      if (!ethereum.request) {
+        throw new Error('钱包不支持请求方法');
+      }
+
+      // 获取当前连接的账户地址
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+
+      // 创建合约实例
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const platformTokenContract = new ethers.Contract(
+        blockchainConfig.contracts.platformToken.address,
+        blockchainConfig.contracts.platformToken.abi,
+        provider
+      );
+
+      // 调用合约的getCreatorLevelInfo方法
+      const [level, totalVolume, nextLevelThreshold, currentBonusRate] = 
+        await platformTokenContract.getCreatorLevelInfo(userAddress);
+      
+      return {
+        success: true,
+        data: {
+          level: level.toNumber(),
+          totalVolume: totalVolume.toString(),
+          nextLevelThreshold: nextLevelThreshold.toString(),
+          currentBonusRate: currentBonusRate.toString()
+        }
+      };
+    } catch (error) {
+      console.error('获取创作者等级信息失败:', error);
+      return {
+        success: false,
+        message: '获取创作者等级信息失败'
+      };
+    }
+  },
 };
 
 export default NFTService; 
