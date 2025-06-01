@@ -30,12 +30,12 @@ export const blockchainConfig = {
   // 合约地址
   contracts: {
     platformToken: {
-      address: '0x1B5949F50DA560080f1708C99d79d56fF4a22148',
+      address: '0xF55c3aF7847a30Fff55c7dcbc7E6b6Fc7fd058ae',
       chainId: localhost.id,
       abi: PLATFORM_TOKEN_ABI
     },
     academicNFT: {
-      address: '0x95D79EA2053C60b7ba78d391B0c7eFA7adceC91a',
+      address: '0x6C20311c3c9e86cAc495B077898A6061de130f98',
       chainId: localhost.id,
       abi: ACADEMIC_NFT_ABI
     },
@@ -44,12 +44,12 @@ export const blockchainConfig = {
       chainId: localhost.id
     },
     market: {
-      address: '0x2b905c2049E7899f7F3F18c57aeAE2459b40Bd24',
+      address: '0xF5A17c37fc8FBC124C47169640b32C2448de8E32',
       chainId: localhost.id,
       abi: MARKET_ABI
     },
     accessToken: {
-      address: '0x0674Da246c8fdc499763112B5301030364B10F6E',
+      address: '0x22aD82d96b47877B7D0B50aCE3a38A53d2D5cba8',
       chainId: localhost.id,
       abi: ACCESS_TOKEN_ABI
     }

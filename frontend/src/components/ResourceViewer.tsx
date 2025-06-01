@@ -92,8 +92,8 @@ const ResourceViewer: React.FC<ResourceViewerProps> = ({ resourceId: propResourc
         const isCreator = metadata.creator && address &&
                        metadata.creator.toLowerCase() === address.toLowerCase();
         
-        // 设置所有者状态
-        setIsOwner(!!(isOwnerCheck || isCreator));
+        // 设置所有者状态 - 只有当前持有者才能更新访问权配置
+        setIsOwner(!!isOwnerCheck);
         
         // 检查是否已购买(所有者或创建者默认已拥有)
         if (isOwnerCheck || isCreator) {
