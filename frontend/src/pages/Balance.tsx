@@ -41,7 +41,7 @@ const BalancePage: React.FC = () => {
       const levelResponse = await NFTService.getCreatorLevelInfo();
       if (levelResponse.success && levelResponse.data) {
         setLevelInfo({
-          level: levelResponse.data.level,
+          level: Number(levelResponse.data.level),
           totalVolume: ethers.utils.formatEther(levelResponse.data.totalVolume),
           nextLevelThreshold: ethers.utils.formatEther(levelResponse.data.nextLevelThreshold),
           currentBonusRate: (Number(levelResponse.data.currentBonusRate) / 100).toString() + "%"
@@ -100,9 +100,19 @@ const BalancePage: React.FC = () => {
                 {isBalanceLoading ? (
                   <p className="text-gray-500">加载中...</p>
                 ) : (
-                  <p className="text-2xl font-bold text-blue-600">
-                    {balance ? Number(balance) / 1e18 : 0} PLT
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-2xl font-bold text-blue-600">
+                      {balance ? ethers.utils.formatEther(balance.toString()) : "0.00"} PLT
+                    </p>
+                    {levelInfo && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-600">当前等级:</span>
+                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                          Level {levelInfo.level}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="text-sm text-gray-500">
@@ -138,10 +148,6 @@ const BalancePage: React.FC = () => {
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-semibold text-gray-700 mb-4">创作者等级</h2>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">当前等级</span>
-                  <span className="text-xl font-bold text-purple-600">Level {levelInfo.level}</span>
-                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">总交易量</span>
                   <span className="text-gray-800">{levelInfo.totalVolume} ETH</span>

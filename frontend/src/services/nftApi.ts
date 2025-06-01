@@ -1255,7 +1255,7 @@ export const NFTService = {
       return {
         success: true,
         data: {
-          level: level.toNumber(),
+          level: Number(level),
           totalVolume: totalVolume.toString(),
           nextLevelThreshold: nextLevelThreshold.toString(),
           currentBonusRate: currentBonusRate.toString()
