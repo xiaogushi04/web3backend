@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useAccount, useContractRead } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { PLATFORM_TOKEN_ABI } from "../config/contracts";
 import { blockchainConfig } from "../config/blockchain";
 import { NFTService } from "../services/nftApi";
 import { ethers } from "ethers";
-import { useToast } from "../hooks/useToast";
+import { useToast } from "../components/ToastManager";
 
 const BalancePage: React.FC = () => {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const { showToast } = useToast();
+  const [balance, setBalance] = useState<string>("0");
   const [claimableReward, setClaimableReward] = useState<string>("0");
   const [levelInfo, setLevelInfo] = useState<{
     level: number;
@@ -18,13 +20,31 @@ const BalancePage: React.FC = () => {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [isBalanceLoading, setIsBalanceLoading] = useState(false);
 
-  const { data: balance, isLoading: isBalanceLoading } = useContractRead({
-    address: blockchainConfig.contracts.platformToken.address as `0x${string}`,
-    abi: PLATFORM_TOKEN_ABI,
-    functionName: "balanceOf",
-    args: [address],
-  });
+  // 获取余额
+  const getBalance = useCallback(async () => {
+    if (!window.ethereum || !address) return;
+    
+    try {
+      setIsBalanceLoading(true);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const contract = new ethers.Contract(
+        blockchainConfig.contracts.platformToken.address,
+        PLATFORM_TOKEN_ABI,
+        provider
+      );
+      
+      const balance = await contract.balanceOf(address);
+      const formatted = ethers.utils.formatEther(balance);
+      setBalance(formatted);
+    } catch (error) {
+      console.error('获取余额失败:', error);
+      showToast('获取余额失败', 'error');
+    } finally {
+      setIsBalanceLoading(false);
+    }
+  }, [address, showToast]);
 
   // 加载可领取奖励和等级信息
   const loadRewardInfo = useCallback(async () => {
@@ -63,8 +83,8 @@ const BalancePage: React.FC = () => {
       
       if (response.success) {
         showToast('领取奖励成功！', 'success');
-        // 重新加载奖励信息
-        await loadRewardInfo();
+        // 重新加载信息
+        await Promise.all([loadRewardInfo(), getBalance()]);
       } else {
         throw new Error(response.message || '领取失败');
       }
@@ -77,10 +97,11 @@ const BalancePage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected && address) {
       loadRewardInfo();
+      getBalance();
     }
-  }, [isConnected, loadRewardInfo]);
+  }, [isConnected, address, loadRewardInfo, getBalance]);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -102,7 +123,7 @@ const BalancePage: React.FC = () => {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-2xl font-bold text-blue-600">
-                      {balance ? ethers.utils.formatEther(balance.toString()) : "0.00"} PLT
+                      {balance} PLT
                     </p>
                     {levelInfo && (
                       <div className="flex items-center space-x-2">

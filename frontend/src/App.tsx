@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { WagmiConfig } from 'wagmi';
-import { mainnet, sepolia } from 'wagmi/chains';
+import { mainnet } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createWeb3Modal, defaultWagmiConfig } from '@web3modal/wagmi/react';
 import { injected } from 'wagmi/connectors';
@@ -15,13 +15,14 @@ import About from './pages/About';
 import { ToastProvider } from './components/ToastManager';
 import BalancePage from './pages/Balance';
 import { ToastContainer } from './components/Toast';
+import { blockchainConfig } from './config/blockchain';
 
 // 项目ID - WalletConnect Cloud项目ID
 // 注意：这应该是您在 https://cloud.walletconnect.com 上注册的有效项目ID
 const projectId = 'aadafb1f94cb7260af9b193ad726e667';
 
-// 配置支持的链 - 确保Sepolia在前面，作为默认链
-const chains = [sepolia, mainnet] as const;
+// 配置支持的链 - 使用本地ganache网络
+const chains = [blockchainConfig.defaultChain, mainnet] as const;
 
 // 自定义配置
 const wagmiConfig = defaultWagmiConfig({
@@ -50,7 +51,7 @@ try {
     wagmiConfig, 
     projectId,
     themeMode: 'dark',
-    defaultChain: sepolia,
+    defaultChain: blockchainConfig.defaultChain,
     // 优先使用MetaMask
     featuredWalletIds: [
       'c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96' // MetaMask

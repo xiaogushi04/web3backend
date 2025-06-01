@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Navigation from './Navigation';
 import Header from './Header';
 import { useAccount, useChainId, useSwitchChain } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
+import { blockchainConfig } from '../config/blockchain';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,7 +15,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isWrongNetwork, setIsWrongNetwork] = useState(false);
 
   useEffect(() => {
-    if (isConnected && chainId && chainId !== sepolia.id) {
+    if (isConnected && chainId && chainId !== blockchainConfig.defaultChain.id) {
       setIsWrongNetwork(true);
     } else {
       setIsWrongNetwork(false);
@@ -31,13 +31,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {isConnected && isWrongNetwork && (
         <div className="bg-yellow-600 text-white p-2 text-center">
           <p className="text-sm">
-            您当前连接的网络不是 Sepolia 测试网。
+            您当前连接的网络不是本地 Ganache 测试网。
             <button 
-              onClick={() => switchChain({ chainId: sepolia.id })} 
+              onClick={() => switchChain({ chainId: blockchainConfig.defaultChain.id })} 
               disabled={isSwitching}
               className="ml-2 underline hover:no-underline"
             >
-              {isSwitching ? '切换中...' : '点击切换'}
+              {isSwitching ? '切换中...' : '点击切换到本地网络'}
             </button>
           </p>
         </div>

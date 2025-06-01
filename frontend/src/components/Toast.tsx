@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useToast } from '../hooks/useToast';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useToast } from './ToastManager';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -12,8 +12,9 @@ interface ToastProps {
 
 const ToastMessage: React.FC<ToastProps> = ({ message, type, duration = 5000, onClose }) => {
   const [isPaused, setIsPaused] = useState(false);
-  const [progress, setProgress] = useState(100);
-  const [startTime] = useState(Date.now());
+  const [remainingTime, setRemainingTime] = useState(duration);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastUpdateRef = useRef<number>(Date.now());
 
   const getToastStyles = (type: ToastType) => {
     switch (type) {
@@ -45,29 +46,66 @@ const ToastMessage: React.FC<ToastProps> = ({ message, type, duration = 5000, on
     }
   };
 
-  useEffect(() => {
-    if (!isPaused) {
-      const timer = setInterval(() => {
-        const elapsedTime = Date.now() - startTime;
-        const remaining = duration - elapsedTime;
-        
-        if (remaining <= 0) {
-          clearInterval(timer);
-          onClose();
-        } else {
-          setProgress((remaining / duration) * 100);
-        }
-      }, 10);
-
-      return () => clearInterval(timer);
+  const clearTimer = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-  }, [duration, isPaused, onClose, startTime]);
+  }, []);
+
+  const startTimer = useCallback(() => {
+    clearTimer();
+    lastUpdateRef.current = Date.now();
+
+    intervalRef.current = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - lastUpdateRef.current;
+      lastUpdateRef.current = now;
+
+      setRemainingTime(prev => {
+        const newTime = prev - elapsed;
+        if (newTime <= 0) {
+          clearTimer();
+          onClose();
+          return 0;
+        }
+        return newTime;
+      });
+    }, 50); // 每50ms更新一次，更平滑
+  }, [clearTimer, onClose]);
+
+  // 处理暂停/恢复
+  useEffect(() => {
+    if (isPaused) {
+      clearTimer();
+    } else {
+      startTimer();
+    }
+
+    return clearTimer;
+  }, [isPaused, startTimer, clearTimer]);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return clearTimer;
+  }, [clearTimer]);
+
+  // 计算进度百分比
+  const progress = Math.max(0, (remainingTime / duration) * 100);
+
+  const handleMouseEnter = () => {
+    setIsPaused(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsPaused(false);
+  };
 
   return (
     <div
       className={`group relative shadow-lg rounded-lg overflow-hidden transition-all transform ${getToastStyles(type)}`}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <div className="flex items-start p-4 space-x-3">
         <div className={`flex-shrink-0 ${getIconStyles(type)}`}>
@@ -105,7 +143,7 @@ const ToastMessage: React.FC<ToastProps> = ({ message, type, duration = 5000, on
         </button>
       </div>
       <div
-        className="absolute bottom-0 left-0 h-1 bg-current opacity-20 transition-all"
+        className={`absolute bottom-0 left-0 h-1 transition-all duration-75 ${isPaused ? 'bg-gray-400' : 'bg-current'} opacity-30`}
         style={{ width: `${progress}%` }}
       />
     </div>
@@ -113,7 +151,7 @@ const ToastMessage: React.FC<ToastProps> = ({ message, type, duration = 5000, on
 };
 
 export const ToastContainer: React.FC = () => {
-  const { toasts, removeToast } = useToast();
+  const { toasts, hideToast } = useToast();
 
   return (
     <div className="fixed top-4 right-4 z-50 space-y-2">
@@ -122,7 +160,7 @@ export const ToastContainer: React.FC = () => {
           key={toast.id}
           message={toast.message}
           type={toast.type}
-          onClose={() => removeToast(toast.id)}
+          onClose={() => hideToast(toast.id)}
         />
       ))}
     </div>
